@@ -1,5 +1,6 @@
-package com.amazonaws.samples.consumer;
+package com.amazonaws.samples.producer.Implementations;
 
+import com.amazonaws.samples.producer.GenericAwsSinkWriter;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.kinesis.KinesisAsyncClient;
 import software.amazon.awssdk.services.kinesis.model.PutRecordsRequest;
@@ -9,12 +10,12 @@ import software.amazon.awssdk.services.kinesis.model.PutRecordsResponse;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
-public class KinesisSink<InputT> extends GenericAwsSinkWriter<InputT, KinesisAsyncClient, PutRecordsRequestEntry, PutRecordsResponse> {
+public class KinesisSinkWriter<InputT> extends GenericAwsSinkWriter<InputT, KinesisAsyncClient, PutRecordsRequestEntry, PutRecordsResponse> {
 
-    public KinesisSink() {
+    public KinesisSinkWriter() {
         // supply buffering hints, etc...
 
-        client = KinesisAsyncClient.builder().build();
+        super(KinesisAsyncClient.builder().build());
     }
 
     @Override
