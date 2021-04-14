@@ -1,4 +1,4 @@
-package com.amazonaws.samples.consumer;
+package com.amazonaws.samples.producer;
 
 import org.apache.flink.api.connector.sink.Committer;
 import org.apache.flink.api.connector.sink.GlobalCommitter;
