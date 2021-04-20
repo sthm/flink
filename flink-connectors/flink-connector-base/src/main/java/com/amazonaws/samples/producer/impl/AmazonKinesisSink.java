@@ -20,8 +20,8 @@ public class AmazonKinesisSink<InputT> extends GenericAwsSink<InputT, KinesisAsy
 
     private class AmazonKinesisProducer<InputT> extends GenericAwsProducer<InputT, KinesisAsyncClient, PutRecordsRequestEntry, PutRecordsResponse> {
         @Override
-        public software.amazon.awssdk.services.kinesis.model.PutRecordsRequestEntry queueElement(InputT element) {
-            return software.amazon.awssdk.services.kinesis.model.PutRecordsRequestEntry
+        public PutRecordsRequestEntry queueElement(InputT element) {
+            return PutRecordsRequestEntry
                     .builder()
                     .data(SdkBytes.fromUtf8String(element.toString()))
                     .partitionKey(element.toString())
@@ -29,13 +29,13 @@ public class AmazonKinesisSink<InputT> extends GenericAwsSink<InputT, KinesisAsy
         }
 
         @Override
-        public CompletableFuture<software.amazon.awssdk.services.kinesis.model.PutRecordsResponse> submitRequests(List<software.amazon.awssdk.services.kinesis.model.PutRecordsRequestEntry> requests) {
+        public CompletableFuture<PutRecordsResponse> submitRequests(List<PutRecordsRequestEntry> requests) {
             PutRecordsRequest request = PutRecordsRequest
                     .builder()
                     .records(requests)
                     .build();
 
-            CompletableFuture<software.amazon.awssdk.services.kinesis.model.PutRecordsResponse> future = client.putRecords(request);
+            CompletableFuture<PutRecordsResponse> future = client.putRecords(request);
 
             future.whenComplete((response, err) -> {
                 // re-queue all requests that failed, can be skipped if people don't care for at-least once semantics

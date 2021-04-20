@@ -10,9 +10,15 @@ import software.amazon.awssdk.core.SdkClient;
 
 
 /**
- * The sink buffers records and issues batchRequests
+ * The main design goal is to obtain a generic sink that implements the common functionality required, such as,
+ * buffering/batching events and retry capabilities. The sink should be easily extensible and provide reasonable
+ * semantics, ie, at-least once semantics.
+ *
+ * The sink implements the interface of a SinkFunction and hands over requests to a service specific AwsProducer,
+ * that actually sends the requests to the sink.
+ *
  * Limitations:
- *  - does not respect ordering of events
+ *  - may break ordering of events during reties
  */
 
 public class GenericAwsSink<InputT, ClientT extends SdkClient, RequestT, ResponseT> extends RichSinkFunction<InputT> implements CheckpointedFunction {

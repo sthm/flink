@@ -7,7 +7,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingDeque;
 
 
-
+/**
+ * The producer is responsible for buffering/batching requests according to buffering hints from the user.
+ * It's also responsible for triggering batch puts and tracking in flight request.
+ */
 public abstract class GenericAwsProducer<InputT, ClientT extends SdkClient, RequestT, ResponseT> {
 
     /**
