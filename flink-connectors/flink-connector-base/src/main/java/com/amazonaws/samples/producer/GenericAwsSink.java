@@ -1,46 +1,40 @@
 package com.amazonaws.samples.producer;
 
-import org.apache.flink.api.connector.sink.Committer;
-import org.apache.flink.api.connector.sink.GlobalCommitter;
-import org.apache.flink.api.connector.sink.Sink;
-import org.apache.flink.api.connector.sink.SinkWriter;
-import org.apache.flink.core.io.SimpleVersionedSerializer;
+import org.apache.flink.runtime.state.FunctionInitializationContext;
+import org.apache.flink.runtime.state.FunctionSnapshotContext;
+import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
+import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
+import software.amazon.awssdk.core.SdkClient;
 
 
-import java.io.IOException;
-import java.util.List;
-import java.util.Optional;
 
-public class GenericAwsSink<InputT, CommT, WriterStateT, GlobalCommT> implements Sink<InputT, CommT, WriterStateT, GlobalCommT> {
 
+/**
+ * The sink buffers records and issues batchRequests
+ * Limitations:
+ *  - does not respect ordering of events
+ */
+
+public class GenericAwsSink<InputT, ClientT extends SdkClient, RequestT, ResponseT> extends RichSinkFunction<InputT> implements CheckpointedFunction {
+
+    protected GenericAwsProducer<InputT, ClientT, RequestT, ResponseT> producer;
 
     @Override
-    public SinkWriter<InputT, CommT, WriterStateT> createWriter(InitContext initContext, List<WriterStateT> list) throws IOException {
-        return null;
+    public void invoke(InputT element, Context context) throws Exception {
     }
 
     @Override
-    public Optional<Committer<CommT>> createCommitter() throws IOException {
-        return Optional.empty();
+    public void close() throws Exception {
     }
 
     @Override
-    public Optional<GlobalCommitter<CommT, GlobalCommT>> createGlobalCommitter() throws IOException {
-        return Optional.empty();
+    public void snapshotState(FunctionSnapshotContext context) throws Exception {
+
     }
 
     @Override
-    public Optional<SimpleVersionedSerializer<CommT>> getCommittableSerializer() {
-        return Optional.empty();
-    }
+    public void initializeState(FunctionInitializationContext context) throws Exception {
 
-    @Override
-    public Optional<SimpleVersionedSerializer<GlobalCommT>> getGlobalCommittableSerializer() {
-        return Optional.empty();
-    }
-
-    @Override
-    public Optional<SimpleVersionedSerializer<WriterStateT>> getWriterStateSerializer() {
-        return Optional.empty();
     }
 }
+
