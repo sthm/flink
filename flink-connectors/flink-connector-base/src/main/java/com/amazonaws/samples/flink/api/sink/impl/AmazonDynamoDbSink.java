@@ -21,7 +21,7 @@ public class AmazonDynamoDbSink<InputT extends Map<String, AttributeValue>> exte
 
     private class AmazonDynamoDbProducer extends GenericApiProducer<InputT, DynamoDbAsyncClient, WriteRequest, BatchWriteItemResponse> {
         @Override
-        public WriteRequest queueElement(InputT element) {
+        public WriteRequest convertToRequest(InputT element) {
             PutRequest putRequest = PutRequest
                     .builder()
                     .item(element)
@@ -34,7 +34,7 @@ public class AmazonDynamoDbSink<InputT extends Map<String, AttributeValue>> exte
         }
 
         @Override
-        public CompletableFuture<BatchWriteItemResponse> submitRequests(List<WriteRequest> requests) {
+        public CompletableFuture<BatchWriteItemResponse> submitBatchRequestToApi(List<WriteRequest> requests) {
             Map<String, List<WriteRequest>> items = new HashMap<>();
             items.put("table-name", requests);
 

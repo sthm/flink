@@ -18,7 +18,7 @@ public abstract class GenericApiProducer<InputT, ClientT, RequestT, ResponseT> {
     protected transient ClientT client;
 
     /**
-     * Basic service properties and limits.
+     * Basic service properties and limits. Supported requests per sec, batch size, etc.
      */
     private Object ServiceProperties;
 
@@ -28,7 +28,8 @@ public abstract class GenericApiProducer<InputT, ClientT, RequestT, ResponseT> {
     private Object ProducerConfiguration;
 
     /**
-     * Buffer to hold request that should be persisted into the respective endpoint.
+     * Buffer to hold request that should be persisted into the respective endpoint. Using a blocking deque so that
+     * the sink can properly build backpressure.
      */
     private transient LinkedBlockingDeque<RequestT> bufferedRequests;
 
@@ -38,13 +39,13 @@ public abstract class GenericApiProducer<InputT, ClientT, RequestT, ResponseT> {
      * Function that converts a set of put requests into a batch put request. It also executes the batch request and
      * is responsible to re-queue all individual put requests that were not successfully persisted.
      */
-    public abstract CompletableFuture<ResponseT> submitRequests(List<RequestT> requests);
+    public abstract CompletableFuture<ResponseT> submitBatchRequestToApi(List<RequestT> requests);
 
     /**
      * Takes an event from an internal (keyed) stream and converts it into an appropriate put request that can be
      * issued through ClientT.
      */
-    public abstract RequestT queueElement(InputT element);
+    public abstract RequestT convertToRequest(InputT element);
 
     /**
      * Helper method to re-queue requests that have failed.
@@ -88,5 +89,5 @@ public abstract class GenericApiProducer<InputT, ClientT, RequestT, ResponseT> {
         //unblock call to flush()
     }
 
-    // TODO: batch apps: flushSync on job completion?
+    // TODO: for batch apps: flushSync on job completion?
 }
