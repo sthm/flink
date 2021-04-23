@@ -23,7 +23,7 @@ public class AmazonKinesisSink<InputT> extends GenericApiSink<InputT, KinesisAsy
 
     private class AmazonKinesisProducer extends GenericApiProducer<InputT, KinesisAsyncClient, PutRecordsRequestEntry, PutRecordsResponse> {
         @Override
-        public PutRecordsRequestEntry queueElement(InputT element) {
+        public PutRecordsRequestEntry convertToRequest(InputT element) {
             return PutRecordsRequestEntry
                     .builder()
                     .data(SdkBytes.fromUtf8String(element.toString()))
@@ -32,7 +32,7 @@ public class AmazonKinesisSink<InputT> extends GenericApiSink<InputT, KinesisAsy
         }
 
         @Override
-        public CompletableFuture<PutRecordsResponse> submitRequests(List<PutRecordsRequestEntry> requests) {
+        public CompletableFuture<PutRecordsResponse> submitBatchRequestToApi(List<PutRecordsRequestEntry> requests) {
             PutRecordsRequest request = PutRecordsRequest
                     .builder()
                     .records(requests)
