@@ -1,10 +1,9 @@
-package com.amazonaws.samples.producer;
+package com.amazonaws.samples.flink.api.sink;
 
 import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.FunctionSnapshotContext;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
-import software.amazon.awssdk.core.SdkClient;
 
 
 
@@ -18,12 +17,13 @@ import software.amazon.awssdk.core.SdkClient;
  * that actually sends the requests to the sink.
  *
  * Limitations:
- *  - may break ordering of events during reties
+ *  - breaks ordering of events during reties
+ *  - cannot support exactly-once semantics
  */
 
-public class GenericAwsSink<InputT, ClientT extends SdkClient, RequestT, ResponseT> extends RichSinkFunction<InputT> implements CheckpointedFunction {
+public class GenericApiSink<InputT, ClientT, RequestT, ResponseT> extends RichSinkFunction<InputT> implements CheckpointedFunction {
 
-    protected GenericAwsProducer<InputT, ClientT, RequestT, ResponseT> producer;
+    protected GenericApiProducer<InputT, ClientT, RequestT, ResponseT> producer;
 
     @Override
     public void invoke(InputT element, Context context) throws Exception {
@@ -33,14 +33,15 @@ public class GenericAwsSink<InputT, ClientT extends SdkClient, RequestT, Respons
     public void close() throws Exception {
     }
 
+
     @Override
     public void snapshotState(FunctionSnapshotContext context) throws Exception {
-
+        // producer.initateCheckpoint(); store all events from buffer in state; producer.completeCheckpoint();
     }
 
     @Override
     public void initializeState(FunctionInitializationContext context) throws Exception {
-
+        // load events from state back into producer queue
     }
 }
 
