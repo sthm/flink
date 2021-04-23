@@ -1,7 +1,7 @@
-package com.amazonaws.samples.producer.impl;
+package com.amazonaws.samples.flink.api.sink.impl;
 
-import com.amazonaws.samples.producer.GenericAwsProducer;
-import com.amazonaws.samples.producer.GenericAwsSink;
+import com.amazonaws.samples.flink.api.sink.GenericApiProducer;
+import com.amazonaws.samples.flink.api.sink.GenericApiSink;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.kinesis.KinesisAsyncClient;
 import software.amazon.awssdk.services.kinesis.model.PutRecordsRequest;
@@ -11,14 +11,17 @@ import software.amazon.awssdk.services.kinesis.model.PutRecordsResponse;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
-public class AmazonKinesisSink<InputT> extends GenericAwsSink<InputT, KinesisAsyncClient, PutRecordsRequestEntry, PutRecordsResponse> {
+public class AmazonKinesisSink<InputT> extends GenericApiSink<InputT, KinesisAsyncClient, PutRecordsRequestEntry, PutRecordsResponse> {
 
     public AmazonKinesisSink() {
         this.producer = new AmazonKinesisProducer();
+
+        // initialize service specific buffering hints (maybe static?)
+        // set user specific buffering hints & config through constructor
     }
 
 
-    private class AmazonKinesisProducer<InputT> extends GenericAwsProducer<InputT, KinesisAsyncClient, PutRecordsRequestEntry, PutRecordsResponse> {
+    private class AmazonKinesisProducer extends GenericApiProducer<InputT, KinesisAsyncClient, PutRecordsRequestEntry, PutRecordsResponse> {
         @Override
         public PutRecordsRequestEntry queueElement(InputT element) {
             return PutRecordsRequestEntry
@@ -52,6 +55,5 @@ public class AmazonKinesisSink<InputT> extends GenericAwsSink<InputT, KinesisAsy
 
             return future;
         }
-
     }
 }

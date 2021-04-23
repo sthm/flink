@@ -1,7 +1,7 @@
-package com.amazonaws.samples.producer.impl;
+package com.amazonaws.samples.flink.api.sink.impl;
 
-import com.amazonaws.samples.producer.GenericAwsProducer;
-import com.amazonaws.samples.producer.GenericAwsSink;
+import com.amazonaws.samples.flink.api.sink.GenericApiProducer;
+import com.amazonaws.samples.flink.api.sink.GenericApiSink;
 import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
 
@@ -10,13 +10,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
-public class AmazonDynamoDbSink<InputT extends Map<String, AttributeValue>> extends GenericAwsSink<InputT, DynamoDbAsyncClient, WriteRequest, BatchWriteItemResponse> {
+public class AmazonDynamoDbSink<InputT extends Map<String, AttributeValue>> extends GenericApiSink<InputT, DynamoDbAsyncClient, WriteRequest, BatchWriteItemResponse> {
 
     public AmazonDynamoDbSink() {
         this.producer = new AmazonDynamoDbProducer();
+
+        // initialize service specific buffering hints (maybe static?)
+        // set user specific buffering hints & config through constructor
     }
 
-    private class AmazonDynamoDbProducer extends GenericAwsProducer<InputT, DynamoDbAsyncClient, WriteRequest, BatchWriteItemResponse> {
+    private class AmazonDynamoDbProducer extends GenericApiProducer<InputT, DynamoDbAsyncClient, WriteRequest, BatchWriteItemResponse> {
         @Override
         public WriteRequest queueElement(InputT element) {
             PutRequest putRequest = PutRequest

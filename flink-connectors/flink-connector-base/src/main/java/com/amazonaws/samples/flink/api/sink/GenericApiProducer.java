@@ -1,6 +1,4 @@
-package com.amazonaws.samples.producer;
-
-import software.amazon.awssdk.core.SdkClient;
+package com.amazonaws.samples.flink.api.sink;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -9,12 +7,13 @@ import java.util.concurrent.LinkedBlockingDeque;
 
 /**
  * The producer is responsible for buffering/batching requests according to buffering hints from the user.
- * It's also responsible for triggering batch puts and tracking in flight request.
+ * It's also responsible for triggering batch puts and tracking in flight request to ensure that all requests are
+ * eventually persisted.
  */
-public abstract class GenericAwsProducer<InputT, ClientT extends SdkClient, RequestT, ResponseT> {
+public abstract class GenericApiProducer<InputT, ClientT, RequestT, ResponseT> {
 
     /**
-     * The AWS sdk client that communicates with the respective sink.
+     * The client that communicates with the respective endpoint.
      */
     protected transient ClientT client;
 
@@ -29,7 +28,7 @@ public abstract class GenericAwsProducer<InputT, ClientT extends SdkClient, Requ
     private Object ProducerConfiguration;
 
     /**
-     * Buffer to hold request that should be persisted into the respective sink.
+     * Buffer to hold request that should be persisted into the respective endpoint.
      */
     private transient LinkedBlockingDeque<RequestT> bufferedRequests;
 
@@ -51,7 +50,7 @@ public abstract class GenericAwsProducer<InputT, ClientT extends SdkClient, Requ
      * Helper method to re-queue requests that have failed.
      */
     public void queueRequest(RequestT request) {
-        bufferedRequests.add(request);
+        bufferedRequests.offerFirst(request);
     }
 
 
@@ -76,10 +75,18 @@ public abstract class GenericAwsProducer<InputT, ClientT extends SdkClient, Requ
 
 
     /**
-     * invoke flush operation and wait until all futures in inFlightRequests have completed
-     * -> block creation of any new requests during that time
+     * Make sure that all inFlight requests are completed and no new requests can be created.
      */
-    private void flushSync() {
-        //flush(); Promise.all(inFlightRequests); inFlightRequests.clear(); iterate
+    public void initateCheckpoint() {
+        //block calls to flush(); Promise.all(inFlightRequests); inFlightRequests.clear();
     }
+
+    /**
+     * Allow new requests once the checkpoint completed
+     */
+    public void completeCheckpoint() {
+        //unblock call to flush()
+    }
+
+    // TODO: batch apps: flushSync on job completion?
 }
