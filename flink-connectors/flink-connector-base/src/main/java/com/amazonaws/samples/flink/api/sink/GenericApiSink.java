@@ -36,7 +36,7 @@ public class GenericApiSink<InputT, ClientT, RequestT, ResponseT> extends RichSi
 
     @Override
     public void snapshotState(FunctionSnapshotContext context) throws Exception {
-        // producer.initateCheckpoint(); store all events from buffer in state; producer.completeCheckpoint();
+        // producer.initiateCheckpoint(); store all events from buffer in state; producer.completeCheckpoint();
     }
 
     @Override
