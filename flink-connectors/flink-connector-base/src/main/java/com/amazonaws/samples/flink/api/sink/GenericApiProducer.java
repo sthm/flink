@@ -78,7 +78,7 @@ public abstract class GenericApiProducer<InputT, ClientT, RequestT, ResponseT> {
     /**
      * Make sure that all inFlight requests are completed and no new requests can be created.
      */
-    public void initateCheckpoint() {
+    public void initiateCheckpoint() {
         //block calls to flush(); Promise.all(inFlightRequests); inFlightRequests.clear();
     }
 
