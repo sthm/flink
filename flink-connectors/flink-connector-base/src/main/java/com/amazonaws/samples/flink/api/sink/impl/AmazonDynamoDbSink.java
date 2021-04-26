@@ -14,17 +14,15 @@ import java.util.function.Function;
 public class AmazonDynamoDbSink<InputT> extends GenericApiSink<InputT, WriteRequest, BatchWriteItemResponse> {
 
     private final String tableName;
-    private DynamoDbAsyncClient client = DynamoDbAsyncClient.create();
+    private final DynamoDbAsyncClient client;
 
 
-    public AmazonDynamoDbSink(String tableName, Function<InputT, WriteRequest> elementToRequest) {
+    public AmazonDynamoDbSink(String tableName, Function<InputT, WriteRequest> elementToRequest, DynamoDbAsyncClient client) {
         this.tableName = tableName;
         this.elementToRequest = elementToRequest;
+        this.client = client;
 
         this.producer = new AmazonDynamoDbProducer();
-
-        // initialize service specific buffering hints (maybe static?)
-        // set user specific buffering hints & config through constructor
     }
 
 
@@ -35,12 +33,12 @@ public class AmazonDynamoDbSink<InputT> extends GenericApiSink<InputT, WriteRequ
             Map<String, List<WriteRequest>> items = new HashMap<>();
             items.put(tableName, elements);
 
-            BatchWriteItemRequest request = BatchWriteItemRequest
+            BatchWriteItemRequest batchRequest = BatchWriteItemRequest
                     .builder()
                     .requestItems(items)
                     .build();
 
-            CompletableFuture<BatchWriteItemResponse> future = client.batchWriteItem(request);
+            CompletableFuture<BatchWriteItemResponse> future = client.batchWriteItem(batchRequest);
 
             future.whenComplete((response, err) -> {
                 // re-queue all requests that failed

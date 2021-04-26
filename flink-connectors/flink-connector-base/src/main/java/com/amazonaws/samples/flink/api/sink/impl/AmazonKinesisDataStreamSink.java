@@ -13,19 +13,24 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
-public class AmazonKinesisSink<InputT> extends GenericApiSink<InputT, PutRecordsRequestEntry, PutRecordsResponse> {
+public class AmazonKinesisDataStreamSink<InputT> extends GenericApiSink<InputT, PutRecordsRequestEntry, PutRecordsResponse> {
 
     private final String streamName;
-    private final KinesisAsyncClient client = KinesisAsyncClient.create();
+    private final KinesisAsyncClient client;
 
-    public AmazonKinesisSink(String streamName, Function<InputT, PutRecordsRequestEntry> elementToRequest) {
+    /**
+     * Basic service properties and limits. Supported requests per sec, max batch size, etc.
+     */
+    private Object ServiceProperties;
+
+    public AmazonKinesisDataStreamSink(String streamName, Function<InputT, PutRecordsRequestEntry> elementToRequest, KinesisAsyncClient client) {
         this.streamName = streamName;
         this.elementToRequest = elementToRequest;
+        this.client = client;
 
         this.producer = new AmazonKinesisProducer();
 
-        // initialize service specific buffering hints (maybe static?)
-        // set user specific buffering hints & config through constructor
+        // verify that user supplied buffering strategy respects service specific limits
     }
 
 
@@ -33,7 +38,7 @@ public class AmazonKinesisSink<InputT> extends GenericApiSink<InputT, PutRecords
         @Override
         public CompletableFuture<PutRecordsResponse> submitRequestToApi(List<PutRecordsRequestEntry> requests) {
             // create a batch requests
-            PutRecordsRequest request = PutRecordsRequest
+            PutRecordsRequest batchRequest = PutRecordsRequest
                     .builder()
                     .records(requests)
                     .streamName(streamName)
@@ -41,7 +46,7 @@ public class AmazonKinesisSink<InputT> extends GenericApiSink<InputT, PutRecords
 
 
             // call api with batch request
-            CompletableFuture<PutRecordsResponse> future = client.putRecords(request);
+            CompletableFuture<PutRecordsResponse> future = client.putRecords(batchRequest);
 
 
             // re-queue elements of failed requests
