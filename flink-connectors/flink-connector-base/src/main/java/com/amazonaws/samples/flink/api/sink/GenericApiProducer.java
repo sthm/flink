@@ -17,16 +17,10 @@ public abstract class GenericApiProducer<RequestT extends Serializable, Response
      * Function that converts a set of input elements into a batch put request. It also executes the batch request and
      * is responsible to re-queue all individual put requests that were not successfully persisted.
      */
-    public abstract CompletableFuture<ResponseT> submitRequestToApi(List<RequestT> elements);
-
-
-    /**
-     * Basic service properties and limits. Supported requests per sec, batch size, etc.
-     */
-    private Object ServiceProperties;
+    public abstract CompletableFuture<ResponseT> submitRequestToApi(List<RequestT> requests);
 
     /**
-     * Configuration from the end user, such as, buffering hints, credentials procider, etc.
+     * Configuration from the end user, such as, buffering hints, etc.
      */
     private Object ProducerConfiguration;
 
