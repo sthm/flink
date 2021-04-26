@@ -1,5 +1,6 @@
 package com.amazonaws.samples.flink.api.sink;
 
+import java.io.Serializable;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingDeque;
@@ -7,15 +8,17 @@ import java.util.concurrent.LinkedBlockingDeque;
 
 /**
  * The producer is responsible for buffering/batching requests according to buffering hints from the user.
- * It's also responsible for triggering batch puts and tracking in flight request to ensure that all requests are
+ * It triggers batch puts and tracks in flight request to ensure that all requests are
  * eventually persisted.
  */
-public abstract class GenericApiProducer<InputT, ClientT, RequestT, ResponseT> {
+public abstract class GenericApiProducer<RequestT extends Serializable, ResponseT> {
 
     /**
-     * The client that communicates with the respective endpoint.
+     * Function that converts a set of input elements into a batch put request. It also executes the batch request and
+     * is responsible to re-queue all individual put requests that were not successfully persisted.
      */
-    protected transient ClientT client;
+    public abstract CompletableFuture<ResponseT> submitRequestToApi(List<RequestT> elements);
+
 
     /**
      * Basic service properties and limits. Supported requests per sec, batch size, etc.
@@ -31,28 +34,24 @@ public abstract class GenericApiProducer<InputT, ClientT, RequestT, ResponseT> {
      * Buffer to hold request that should be persisted into the respective endpoint. Using a blocking deque so that
      * the sink can properly build backpressure.
      */
-    private transient LinkedBlockingDeque<RequestT> bufferedRequests;
-
+    private transient LinkedBlockingDeque<RequestT> bufferedRequests = new LinkedBlockingDeque<>(1000);
 
 
     /**
-     * Function that converts a set of put requests into a batch put request. It also executes the batch request and
-     * is responsible to re-queue all individual put requests that were not successfully persisted.
-     */
-    public abstract CompletableFuture<ResponseT> submitBatchRequestToApi(List<RequestT> requests);
-
-    /**
-     * Takes an event from an internal (keyed) stream and converts it into an appropriate put request that can be
-     * issued through ClientT.
-     */
-    public abstract RequestT convertToRequest(InputT element);
-
-    /**
-     * Helper method to re-queue requests that have failed.
+     * Buffers a request that should be sent to the API. New requests are stored at the end of the buffer.
      */
     public void queueRequest(RequestT request) {
+        bufferedRequests.offerLast(request);
+    }
+
+    /**
+     * Buffers a request that was already sent, but failed. Failed requests are stored at the beginning of the buffer
+     * to minimize latency.
+     */
+    public void requeueFailedRequest(RequestT request) {
         bufferedRequests.offerFirst(request);
     }
+
 
 
 

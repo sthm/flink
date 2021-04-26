@@ -5,7 +5,8 @@ import org.apache.flink.runtime.state.FunctionSnapshotContext;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
 
-
+import java.io.Serializable;
+import java.util.function.Function;
 
 
 /**
@@ -18,15 +19,20 @@ import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
  *
  * Limitations:
  *  - breaks ordering of events during reties
- *  - cannot support exactly-once semantics
+ *  - does not support exactly-once semantics
  */
 
-public class GenericApiSink<InputT, ClientT, RequestT, ResponseT> extends RichSinkFunction<InputT> implements CheckpointedFunction {
+public class GenericApiSink<InputT, RequestT extends Serializable, ResponseT> extends RichSinkFunction<InputT> implements CheckpointedFunction {
 
-    protected GenericApiProducer<InputT, ClientT, RequestT, ResponseT> producer;
+    protected GenericApiProducer<RequestT, ResponseT> producer;
+
+    protected Function<InputT, RequestT> elementToRequest;
+
+
 
     @Override
     public void invoke(InputT element, Context context) throws Exception {
+        producer.queueRequest(elementToRequest.apply(element));
     }
 
     @Override
@@ -43,5 +49,6 @@ public class GenericApiSink<InputT, ClientT, RequestT, ResponseT> extends RichSi
     public void initializeState(FunctionInitializationContext context) throws Exception {
         // load events from state back into producer queue
     }
+
 }
 
