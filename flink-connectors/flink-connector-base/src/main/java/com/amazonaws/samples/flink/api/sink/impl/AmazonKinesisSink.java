@@ -7,13 +7,21 @@ import software.amazon.awssdk.services.kinesis.KinesisAsyncClient;
 import software.amazon.awssdk.services.kinesis.model.PutRecordsRequest;
 import software.amazon.awssdk.services.kinesis.model.PutRecordsRequestEntry;
 import software.amazon.awssdk.services.kinesis.model.PutRecordsResponse;
+import software.amazon.awssdk.services.kinesis.model.PutRecordsResultEntry;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 
-public class AmazonKinesisSink<InputT> extends GenericApiSink<InputT, KinesisAsyncClient, PutRecordsRequestEntry, PutRecordsResponse> {
+public class AmazonKinesisSink<InputT> extends GenericApiSink<InputT, PutRecordsRequestEntry, PutRecordsResponse> {
 
-    public AmazonKinesisSink() {
+    private final String streamName;
+    private final KinesisAsyncClient client = KinesisAsyncClient.create();
+
+    public AmazonKinesisSink(String streamName, Function<InputT, PutRecordsRequestEntry> elementToRequest) {
+        this.streamName = streamName;
+        this.elementToRequest = elementToRequest;
+
         this.producer = new AmazonKinesisProducer();
 
         // initialize service specific buffering hints (maybe static?)
@@ -21,31 +29,29 @@ public class AmazonKinesisSink<InputT> extends GenericApiSink<InputT, KinesisAsy
     }
 
 
-    private class AmazonKinesisProducer extends GenericApiProducer<InputT, KinesisAsyncClient, PutRecordsRequestEntry, PutRecordsResponse> {
+    private class AmazonKinesisProducer extends GenericApiProducer<PutRecordsRequestEntry, PutRecordsResponse> {
         @Override
-        public PutRecordsRequestEntry convertToRequest(InputT element) {
-            return PutRecordsRequestEntry
-                    .builder()
-                    .data(SdkBytes.fromUtf8String(element.toString()))
-                    .partitionKey(element.toString())
-                    .build();
-        }
-
-        @Override
-        public CompletableFuture<PutRecordsResponse> submitBatchRequestToApi(List<PutRecordsRequestEntry> requests) {
+        public CompletableFuture<PutRecordsResponse> submitRequestToApi(List<PutRecordsRequestEntry> requests) {
+            // create a batch requests
             PutRecordsRequest request = PutRecordsRequest
                     .builder()
                     .records(requests)
+                    .streamName(streamName)
                     .build();
 
+
+            // call api with batch request
             CompletableFuture<PutRecordsResponse> future = client.putRecords(request);
 
+
+            // re-queue elements of failed requests
             future.whenComplete((response, err) -> {
-                // re-queue all requests that failed, can be skipped if people don't care for at-least once semantics
                 if (response.failedRecordCount() > 0) {
-                    for (int i=0; i<response.failedRecordCount(); i++) {
-                        if (response.records().get(i).errorCode() != null) {
-                            queueRequest(requests.get(i));
+                    List<PutRecordsResultEntry> records = response.records();
+
+                    for (int i=0; i<records.size(); i++) {
+                        if (records.get(i).errorCode() != null) {
+                            requeueFailedRequest(requests.get(i));
                         }
                     }
                 }
@@ -53,7 +59,17 @@ public class AmazonKinesisSink<InputT> extends GenericApiSink<InputT, KinesisAsy
                 //handle errors of the entire request...
             });
 
+
+            // return future to track completion of async request
             return future;
         }
     }
+
+
+    private final Function<InputT, PutRecordsRequestEntry> DEFAULT_ELEMENT_TO_REQUEST = element ->
+            PutRecordsRequestEntry
+                    .builder()
+                    .data(SdkBytes.fromUtf8String(element.toString()))
+                    .partitionKey(element.toString())
+                    .build();
 }
