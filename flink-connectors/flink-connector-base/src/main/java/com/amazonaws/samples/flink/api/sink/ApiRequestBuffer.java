@@ -1,6 +1,5 @@
 package com.amazonaws.samples.flink.api.sink;
 
-import java.io.Serializable;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingDeque;
@@ -11,22 +10,27 @@ import java.util.concurrent.LinkedBlockingDeque;
  * It triggers batch puts and tracks in flight request to ensure that all requests are
  * eventually persisted.
  */
-public abstract class GenericApiProducer<RequestT extends Serializable, ResponseT> {
+public abstract class ApiRequestBuffer<RequestT, ResponseT> {
 
     /**
      * Function that converts a set of input elements into a batch put request. It also executes the batch request and
      * is responsible to re-queue all individual put requests that were not successfully persisted.
      */
-    public abstract CompletableFuture<ResponseT> submitRequestToApi(List<RequestT> requests);
+    public abstract CompletableFuture<ResponseT> submitRequestsToApi(List<RequestT> requests);
 
     /**
      * Configuration from the end user, such as, buffering hints, etc.
      */
-    private Object ProducerConfiguration;
+    private Object producerConfiguration;
 
     /**
      * Buffer to hold request that should be persisted into the respective endpoint. Using a blocking deque so that
      * the sink can properly build backpressure.
+     *
+     * It seems more natural to buffer InputT, ie, the events that should be persisted, rather than RequestT.
+     * However, in practice, the response of a failed API request call can make it very hard, if not impossible,
+     * to reconstruct the original event. It is much easier, to just construct a new (retry) request from the response
+     * and add that back to the queue for later retry.
      */
     private transient LinkedBlockingDeque<RequestT> bufferedRequests = new LinkedBlockingDeque<>(1000);
 

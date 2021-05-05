@@ -24,7 +24,7 @@ import java.util.function.Function;
 
 public class GenericApiSink<InputT, RequestT extends Serializable, ResponseT> extends RichSinkFunction<InputT> implements CheckpointedFunction {
 
-    protected GenericApiProducer<RequestT, ResponseT> producer;
+    protected ApiRequestBuffer<RequestT, ResponseT> producer;
 
     protected Function<InputT, RequestT> elementToRequest;
 

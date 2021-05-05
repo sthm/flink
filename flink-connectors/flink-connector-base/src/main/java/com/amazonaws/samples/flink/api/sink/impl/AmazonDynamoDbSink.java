@@ -1,6 +1,6 @@
 package com.amazonaws.samples.flink.api.sink.impl;
 
-import com.amazonaws.samples.flink.api.sink.GenericApiProducer;
+import com.amazonaws.samples.flink.api.sink.ApiRequestBuffer;
 import com.amazonaws.samples.flink.api.sink.GenericApiSink;
 import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
@@ -22,13 +22,13 @@ public class AmazonDynamoDbSink<InputT> extends GenericApiSink<InputT, WriteRequ
         this.elementToRequest = elementToRequest;
         this.client = client;
 
-        this.producer = new AmazonDynamoDbProducer();
+        this.producer = new AmazonDynamoDbRequestBuffer();
     }
 
 
-    private class AmazonDynamoDbProducer extends GenericApiProducer<WriteRequest, BatchWriteItemResponse> {
+    private class AmazonDynamoDbRequestBuffer extends ApiRequestBuffer<WriteRequest, BatchWriteItemResponse> {
         @Override
-        public CompletableFuture<BatchWriteItemResponse> submitRequestToApi(List<WriteRequest> elements) {
+        public CompletableFuture<BatchWriteItemResponse> submitRequestsToApi(List<WriteRequest> elements) {
 
             Map<String, List<WriteRequest>> items = new HashMap<>();
             items.put(tableName, elements);

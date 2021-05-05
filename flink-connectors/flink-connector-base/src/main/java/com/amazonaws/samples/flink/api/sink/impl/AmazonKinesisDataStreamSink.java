@@ -1,6 +1,6 @@
 package com.amazonaws.samples.flink.api.sink.impl;
 
-import com.amazonaws.samples.flink.api.sink.GenericApiProducer;
+import com.amazonaws.samples.flink.api.sink.ApiRequestBuffer;
 import com.amazonaws.samples.flink.api.sink.GenericApiSink;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.kinesis.KinesisAsyncClient;
@@ -19,24 +19,24 @@ public class AmazonKinesisDataStreamSink<InputT> extends GenericApiSink<InputT, 
     private final KinesisAsyncClient client;
 
     /**
-     * Basic service properties and limits. Supported requests per sec, max batch size, etc.
+     * Basic service properties and limits. Supported requests per sec, max batch size, max items per batch, etc.
      */
-    private Object ServiceProperties;
+    private Object serviceProperties;
 
     public AmazonKinesisDataStreamSink(String streamName, Function<InputT, PutRecordsRequestEntry> elementToRequest, KinesisAsyncClient client) {
         this.streamName = streamName;
         this.elementToRequest = elementToRequest;
         this.client = client;
 
-        this.producer = new AmazonKinesisProducer();
+        this.producer = new AmazonKinesisDataStreamRequestBuffer();
 
         // verify that user supplied buffering strategy respects service specific limits
     }
 
 
-    private class AmazonKinesisProducer extends GenericApiProducer<PutRecordsRequestEntry, PutRecordsResponse> {
+    private class AmazonKinesisDataStreamRequestBuffer extends ApiRequestBuffer<PutRecordsRequestEntry, PutRecordsResponse> {
         @Override
-        public CompletableFuture<PutRecordsResponse> submitRequestToApi(List<PutRecordsRequestEntry> requests) {
+        public CompletableFuture<PutRecordsResponse> submitRequestsToApi(List<PutRecordsRequestEntry> requests) {
             // create a batch requests
             PutRecordsRequest batchRequest = PutRecordsRequest
                     .builder()
