@@ -1,6 +1,6 @@
 package com.amazonaws.samples.flink.api.sink.impl;
 
-import com.amazonaws.samples.flink.api.sink.GenericApiProducer;
+import com.amazonaws.samples.flink.api.sink.ApiRequestBuffer;
 import com.amazonaws.samples.flink.api.sink.GenericApiSink;
 import software.amazon.awssdk.services.firehose.FirehoseAsyncClient;
 import software.amazon.awssdk.services.firehose.model.PutRecordBatchRequest;
@@ -22,12 +22,12 @@ public class AmazonKinesisDataFirehoseSink<InputT> extends GenericApiSink<InputT
         this.elementToRequest = elementToRequest;
         this.client = client;
 
-        this.producer = new AmazonKinesisDataFirehoseProducer();
+        this.producer = new AmazonKinesisDataFirehoseRequestBuffer();
     }
 
-    private class AmazonKinesisDataFirehoseProducer extends GenericApiProducer<Record, PutRecordBatchResponse> {
+    private class AmazonKinesisDataFirehoseRequestBuffer extends ApiRequestBuffer<Record, PutRecordBatchResponse> {
         @Override
-        public CompletableFuture<PutRecordBatchResponse> submitRequestToApi(List<Record> requests) {
+        public CompletableFuture<PutRecordBatchResponse> submitRequestsToApi(List<Record> requests) {
 
             PutRecordBatchRequest batchRequest = PutRecordBatchRequest
                     .builder()
