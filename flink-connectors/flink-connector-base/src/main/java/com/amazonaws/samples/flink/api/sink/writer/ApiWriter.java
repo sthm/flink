@@ -16,7 +16,7 @@ import static org.apache.flink.util.Preconditions.checkArgument;
 
 public abstract class ApiWriter<InputT, RequestT extends Serializable, ResponseT> implements SinkWriter<InputT, ApiSinkCommittable<ResponseT>, ApiWriterState<RequestT>> {
 
-    private Function<InputT, RequestT> elementToRequest;
+    private final Function<InputT, RequestT> elementToRequest;
 
 
     public ApiWriter(Function<InputT, RequestT> elementToRequest) {
@@ -39,7 +39,7 @@ public abstract class ApiWriter<InputT, RequestT extends Serializable, ResponseT
      * to reconstruct the original event. It is much easier, to just construct a new (retry) request from the response
      * and add that back to the queue for later retry.
      */
-    private transient LinkedBlockingDeque<RequestT> bufferedRequests = new LinkedBlockingDeque<>(1000);
+    private transient final LinkedBlockingDeque<RequestT> bufferedRequests = new LinkedBlockingDeque<>(1000);
 
 
     /**
@@ -56,6 +56,8 @@ public abstract class ApiWriter<InputT, RequestT extends Serializable, ResponseT
     @Override
     public void write(InputT element, Context context) throws IOException {
         bufferedRequests.offerLast(elementToRequest.apply(element));
+
+        // if (flush condition) inFlightRequests.add(submitRequests(batch of requests));
     }
 
     public void requeueFailedRequest(RequestT request) {
@@ -64,6 +66,8 @@ public abstract class ApiWriter<InputT, RequestT extends Serializable, ResponseT
 
     @Override
     public List<ApiSinkCommittable<ResponseT>> prepareCommit(boolean flush) throws IOException {
+        // if (flush) inFlightRequests.add(submitRequests(batch of requests));
+
         //block submission of new api calls during checkpointing, so that now new in-flight requests are created;
 
         ApiSinkCommittable<ResponseT> committable = new ApiSinkCommittable<>(inFlightRequests);
