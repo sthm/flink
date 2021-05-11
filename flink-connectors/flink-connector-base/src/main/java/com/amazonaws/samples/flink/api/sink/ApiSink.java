@@ -18,9 +18,6 @@ import java.util.Optional;
  * buffering/batching events and retry capabilities. The sink should be easily extensible and provide reasonable
  * semantics, ie, at-least once semantics.
  *
- * The sink implements the interface of a SinkFunction and hands over requests to a service specific AwsProducer,
- * that actually sends the requests to the sink.
- *
  * Limitations:
  *  - breaks ordering of events during reties
  *  - does not support exactly-once semantics
@@ -38,7 +35,22 @@ public abstract class ApiSink<InputT, RequestT extends Serializable, ResponseT> 
 
     @Override
     public Optional<SimpleVersionedSerializer<ApiSinkCommittable<ResponseT>>> getCommittableSerializer() {
-        return Optional.empty();
+        return Optional.of(new SimpleVersionedSerializer<ApiSinkCommittable<ResponseT>>() {
+            @Override
+            public int getVersion() {
+                return 0;
+            }
+
+            @Override
+            public byte[] serialize(ApiSinkCommittable<ResponseT> completableFutures) throws IOException {
+                return new byte[0];
+            }
+
+            @Override
+            public ApiSinkCommittable<ResponseT> deserialize(int i, byte[] bytes) throws IOException {
+                return null;
+            }
+        });
     }
 
     @Override

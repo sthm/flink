@@ -5,19 +5,25 @@ import org.apache.flink.api.connector.sink.SinkWriter;
 
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.function.Function;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 
 
 public abstract class ApiWriter<InputT, RequestT extends Serializable, ResponseT> implements SinkWriter<InputT, ApiSinkCommittable<ResponseT>, ApiWriterState<RequestT>> {
 
+    static final Logger logger = LogManager.getLogger(ApiWriter.class);
+
     private final Function<InputT, RequestT> elementToRequest;
 
+    private final int BATCH_SIZE = 500;       // just for testing purposes
 
     public ApiWriter(Function<InputT, RequestT> elementToRequest) {
         this.elementToRequest = elementToRequest;
@@ -49,7 +55,7 @@ public abstract class ApiWriter<InputT, RequestT extends Serializable, ResponseT
      * To complete a checkpoint, we need to make sure that no requests are in flight, as they may fail which could
      * then lead to data loss.
      */
-    private List<CompletableFuture<ResponseT>> inFlightRequests;
+    private List<CompletableFuture<ResponseT>> inFlightRequests = new ArrayList<>();
 
 
 
@@ -57,16 +63,34 @@ public abstract class ApiWriter<InputT, RequestT extends Serializable, ResponseT
     public void write(InputT element, Context context) throws IOException {
         bufferedRequests.offerLast(elementToRequest.apply(element));
 
-        // if (flush condition) inFlightRequests.add(submitRequests(batch of requests));
+        flush();  // just for testing
     }
 
     public void requeueFailedRequest(RequestT request) {
         bufferedRequests.offerFirst(request);
     }
 
+    public void flush() {
+        while (bufferedRequests.size() >= BATCH_SIZE) {
+            ArrayList<RequestT> batch = new ArrayList<>();
+
+            for (int i=0; i<BATCH_SIZE; i++) {
+                RequestT request = bufferedRequests.remove();
+                batch.add(request);
+            }
+
+            logger.info("submit requests for {} elements", batch.size());
+
+            inFlightRequests.add(submitRequestsToApi(batch));
+        }
+    }
+
+
     @Override
     public List<ApiSinkCommittable<ResponseT>> prepareCommit(boolean flush) throws IOException {
-        // if (flush) inFlightRequests.add(submitRequests(batch of requests));
+        if (flush) {
+            flush();
+        }
 
         //block submission of new api calls during checkpointing, so that now new in-flight requests are created;
 
