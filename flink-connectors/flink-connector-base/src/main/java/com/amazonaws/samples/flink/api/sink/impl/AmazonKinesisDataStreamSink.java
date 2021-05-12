@@ -17,8 +17,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
 public class AmazonKinesisDataStreamSink<InputT> extends ApiSink<InputT, PutRecordsRequestEntry, PutRecordsResponse> {
-    private static final Logger logger = LogManager.getLogger(AmazonKinesisDataStreamSink.class);
 
+    private static final Logger logger = LogManager.getLogger(AmazonKinesisDataStreamSink.class);
 
     private final String streamName;
     private final static KinesisAsyncClient client = KinesisAsyncClient.create();
@@ -70,7 +70,7 @@ public class AmazonKinesisDataStreamSink<InputT> extends ApiSink<InputT, PutReco
 
         @Override
         protected CompletableFuture<PutRecordsResponse> submitRequestsToApi(List<PutRecordsRequestEntry> requests) {
-            // create a batch requests
+            // create a batch request
             PutRecordsRequest batchRequest = PutRecordsRequest
                     .builder()
                     .records(requests)
