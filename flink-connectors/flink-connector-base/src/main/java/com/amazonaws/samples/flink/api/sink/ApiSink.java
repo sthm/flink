@@ -15,8 +15,8 @@ import java.util.Optional;
 
 /**
  * The main design goal is to obtain a generic sink that implements the common functionality required, such as,
- * buffering/batching events and retry capabilities. The sink should be easily extensible and provide reasonable
- * semantics, ie, at-least once semantics.
+ * buffering/batching events and retry capabilities. The design biases on extensibility to be applicable to a broad
+ * coverage of different API endpoints.
  *
  * Limitations:
  *  - breaks ordering of events during reties
