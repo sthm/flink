@@ -33,7 +33,8 @@ public abstract class ApiWriter<InputT, RequestT extends Serializable, ResponseT
 
 
     /**
-     * This method specifies how to persist buffered requests into the sink. It is provided by the sink creator.
+     * This method specifies how to persist buffered requests into the sink. It is implemented when a new API endpoint
+     * should be supported.
      *
      * The method is invoked with a set of requests according to the buffering hints. The logic then needs to
      * create and execute the put against the API endpoint (ideally by batching together individual requests to increase
