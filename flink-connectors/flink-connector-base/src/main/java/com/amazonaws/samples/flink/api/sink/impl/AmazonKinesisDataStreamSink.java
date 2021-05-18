@@ -83,31 +83,32 @@ public class AmazonKinesisDataStreamSink<InputT> extends ApiSink<InputT, PutReco
 
 
             // re-queue elements of failed requests
-            future.whenComplete((response, err) -> {
-                if (err != null) {
-                    logger.error(err);
+            CompletableFuture<PutRecordsResponse> handleResponse = future
+                .whenComplete((response, err) -> {
+                    if (err != null) {
+                        logger.error(err);
 
-                    return;
-                }
+                        return;
+                    }
 
-                if (response.failedRecordCount() > 0) {
-                    List<PutRecordsResultEntry> records = response.records();
+                    if (response.failedRecordCount() > 0) {
+                        List<PutRecordsResultEntry> records = response.records();
 
-                    for (int i = 0; i < records.size(); i++) {
-                        if (records.get(i).errorCode() != null) {
-                            requeueFailedRequest(requests.get(i));
+                        for (int i = 0; i < records.size(); i++) {
+                            if (records.get(i).errorCode() != null) {
+                                requeueFailedRequest(requests.get(i));
 
-                            logger.warn("Retrying message: {}", requests.get(i));
+                                logger.warn("Retrying message: {}", requests.get(i));
+                            }
                         }
                     }
-                }
 
-                //handle errors of the entire request...
-            });
+                    //handle errors of the entire request...
+                });
 
 
             // return future to track completion of async request
-            return future;
+            return handleResponse;
         }
 
     }
