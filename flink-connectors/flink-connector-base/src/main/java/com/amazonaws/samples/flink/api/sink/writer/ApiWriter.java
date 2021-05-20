@@ -22,59 +22,76 @@ public abstract class ApiWriter<InputT, RequestT extends Serializable, ResponseT
     static final Logger logger = LogManager.getLogger(ApiWriter.class);
 
     /**
-     * This function specifies the mapping between elements of a stream to requests that can be sent to the API. The
-     * mapping is provided by the user of a sink, not the sink creator.
-     *
-     * The requests contain all relevant information for the request to be persisted in the destination. Eg, for
-     * Kinesis Data Streams, the request contains the payload and the partition key. The requests are buffered by the
-     * AipWriter and sent to the API when the {@code submitRequestsToApi} method is invoked.
+     * This function specifies the mapping between elements of a stream to
+     * requests that can be sent to the API. The mapping is provided by the
+     * end-user of a sink, not the sink creator.
+     * <p>
+     * The requests contain all relevant information for the request to be
+     * persisted in the destination. Eg, for Kinesis Data Streams, the request
+     * contains the payload and the partition key. The requests are buffered by
+     * the AipWriter and sent to the API when the {@code submitRequestsToApi}
+     * method is invoked.
      */
     private final Function<InputT, RequestT> elementToRequest;
 
 
     /**
-     * This method specifies how to persist buffered requests into the sink. It is implemented when a new API endpoint
-     * should be supported.
+     * This method specifies how to persist buffered requests into the sink. It
+     * is implemented when a new API endpoint should be supported.
+     * <p>
+     * The method is invoked with a set of requests according to the buffering
+     * hints. The logic then needs to create and execute the put against the API
+     * endpoint (ideally by batching together individual requests to increase
+     * efficiency). The logic also needs to identify individual requests that
+     * were not persisted successfully and resubmit them using the {@code
+     * requeueFailedRequest} method.
+     * <p>
+     * The method returns a future that indicates, once completed, that all
+     * requests that are passed to the method have either successfully completed
+     * or the requests have been re-queued.
+     * <p>
+     * During checkpointing, the sink needs to ensure that there are no
+     * outstanding in-flight requests. Ie, that all futures returned by this
+     * method are completed.
      *
-     * The method is invoked with a set of requests according to the buffering hints. The logic then needs to
-     * create and execute the put against the API endpoint (ideally by batching together individual requests to increase
-     * efficiency). The logic also needs to identify individual requests that were not persisted successfully and
-     * resubmit them using the {@code requeueFailedRequest} method.
-     *
-     * The method returns a future that indicates, once completed, that all requests that are passed to the method have
-     * either successfully completed or the requests have been re-queued.
-     *
-     * During checkpointing, the sink needs to ensure that there are no outstanding in-flight requests. Ie, that all
-     * futures returned by this method are completed.
-     *
-     * @param requests a set of requests that should be sent to the API endpoint
-     * @return a future that completes when all requests have been successfully put to the API or were requeued
+     * @param requests a set of requests that should be sent to the API
+     *                 endpoint
+     * @return a future that completes when all requests have been successfully
+     * put to the API or were requeued
      */
     protected abstract CompletableFuture<ResponseT> submitRequestsToApi(List<RequestT> requests);
 
 
     /**
-     * Buffer to hold requests that should be persisted into the respective API endpoint. Using a blocking deque so that
-     * the sink can properly build backpressure.
-     *
-     * A request contains all relevant details to make a request to the respective API. Eg, for Kinesis a request
-     * contains the payload and partition key.
-     *
-     * It seems more natural to buffer InputT, ie, the events that should be persisted, rather than RequestT.
-     * However, in practice, the response of a failed API request call can make it very hard, if not impossible,
-     * to reconstruct the original event. It is much easier, to just construct a new (retry) request from the response
-     * and add that back to the queue for later retry.
+     * Buffer to hold requests that should be persisted into the respective API
+     * endpoint. Using a blocking deque so that the sink can properly build
+     * backpressure.
+     * <p>
+     * A request contains all relevant details to make a request to the
+     * respective API. Eg, for Kinesis a request contains the payload and
+     * partition key.
+     * <p>
+     * It seems more natural to buffer InputT, ie, the events that should be
+     * persisted, rather than RequestT. However, in practice, the response of a
+     * failed API request call can make it very hard, if not impossible, to
+     * reconstruct the original event. It is much easier, to just construct a
+     * new (retry) request from the response and add that back to the queue for
+     * later retry.
      */
     private transient final LinkedBlockingDeque<RequestT> bufferedRequests = new LinkedBlockingDeque<>();
 
 
     /**
-     * Tracks all async put requests that have been executed since the last checkpoint. They may already have
-     * been completed (successfully or unsuccessfully). Unsuccessful requests need to be handled by the logic in
+     * Tracks all async put requests that have been executed since the last
+     * checkpoint. They may already have been completed (successfully or
+     * unsuccessfully). Unsuccessful requests need to be handled by the logic in
      * {@code submitRequestsToApi}.
-     *
-     * To complete a checkpoint, we need to make sure that no requests are in flight, as they may fail which could
-     * then lead to data loss.
+     * <p>
+     * There is a limit on the number of concurrent (async) requests that can
+     * be handled by the client library.
+     * <p>
+     * To complete a checkpoint, we need to make sure that no requests are in
+     * flight, as they may fail which could then lead to data loss.
      */
     private final LinkedBlockingDeque<CompletableFuture<ResponseT>> inFlightRequests = new LinkedBlockingDeque<>();
 
@@ -126,11 +143,13 @@ public abstract class ApiWriter<InputT, RequestT extends Serializable, ResponseT
 
 
     /**
-     * In flight requests may fail, they will be retried if the sink is still healthy.
-     *
-     * To not loose any requests, there cannot be any outstanding in-flight requests when a checkpoint/commit is in
-     * process. To this end, all in-flight requests need to be completed and no new requests can be created during
-     * a checkpoint.
+     * In flight requests may fail, they will be retried if the sink is still
+     * healthy.
+     * <p>
+     * To not loose any requests, there cannot be any outstanding in-flight
+     * requests when a checkpoint/commit is in process. To this end, all
+     * in-flight requests need to be completed and no new requests can be
+     * created during a checkpoint.
      */
     @Override
     public List<ApiSinkCommittable<ResponseT>> prepareCommit(boolean flush) throws IOException {
@@ -149,7 +168,8 @@ public abstract class ApiWriter<InputT, RequestT extends Serializable, ResponseT
     }
 
     /**
-     * Buffered but not yet submitted requests are stored in the checkpoint/savepoint.
+     * Buffered but not yet submitted requests are stored in the
+     * checkpoint/savepoint.
      */
     @Override
     public List<ApiWriterState<RequestT>> snapshotState() throws IOException {
@@ -161,6 +181,8 @@ public abstract class ApiWriter<InputT, RequestT extends Serializable, ResponseT
 
         return Collections.singletonList(state);
     }
+
+
 
     @Override
     public void close() throws Exception {

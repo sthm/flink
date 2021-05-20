@@ -103,7 +103,7 @@ public class AmazonKinesisDataStreamSink<InputT> extends ApiSink<InputT, PutReco
                         }
                     }
 
-                    //handle errors of the entire request...
+                    //TODO: handle errors of the entire request...
                 });
 
 
