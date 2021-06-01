@@ -1,9 +1,9 @@
 package com.amazonaws.samples.flink.api.sink.impl;
 
-import com.amazonaws.samples.flink.api.sink.ApiSink;
-import com.amazonaws.samples.flink.api.sink.committer.ApiSinkCommittable;
-import com.amazonaws.samples.flink.api.sink.writer.ApiWriter;
-import com.amazonaws.samples.flink.api.sink.writer.ApiWriterState;
+import com.amazonaws.samples.flink.api.sink.ApiBasedSink;
+import com.amazonaws.samples.flink.api.sink.committer.ApiBasedSinkCommittable;
+import com.amazonaws.samples.flink.api.sink.writer.ApiBasedSinkWriter;
+import com.amazonaws.samples.flink.api.sink.writer.ApiBasedSinkWriterState;
 import org.apache.flink.api.connector.sink.SinkWriter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
-public class AmazonKinesisDataStreamSink<InputT> extends ApiSink<InputT, PutRecordsRequestEntry, PutRecordsResponse> {
+public class AmazonKinesisDataStreamSink<InputT> extends ApiBasedSink<InputT, PutRecordsRequestEntry> {
 
     private static final Logger logger = LogManager.getLogger(AmazonKinesisDataStreamSink.class);
 
@@ -30,7 +30,7 @@ public class AmazonKinesisDataStreamSink<InputT> extends ApiSink<InputT, PutReco
     private Object serviceProperties;
 
     @Override
-    public SinkWriter<InputT, ApiSinkCommittable<PutRecordsResponse>, ApiWriterState<PutRecordsRequestEntry>> createWriter(InitContext context, List<ApiWriterState<PutRecordsRequestEntry>> states) throws IOException {
+    public SinkWriter<InputT, ApiBasedSinkCommittable, ApiBasedSinkWriterState<PutRecordsRequestEntry>> createWriter(InitContext context, List<ApiBasedSinkWriterState<PutRecordsRequestEntry>> states) throws IOException {
         return new AmazonKinesisDataStreamWriter();
     }
 
@@ -57,7 +57,7 @@ public class AmazonKinesisDataStreamSink<InputT> extends ApiSink<InputT, PutReco
     }
 
 
-    private class AmazonKinesisDataStreamWriter extends ApiWriter<InputT, PutRecordsRequestEntry, PutRecordsResponse> {
+    private class AmazonKinesisDataStreamWriter extends ApiBasedSinkWriter<InputT, PutRecordsRequestEntry> {
 
         public AmazonKinesisDataStreamWriter() {
             super(element ->
@@ -69,7 +69,7 @@ public class AmazonKinesisDataStreamSink<InputT> extends ApiSink<InputT, PutReco
         }
 
         @Override
-        protected CompletableFuture<PutRecordsResponse> submitRequestsToApi(List<PutRecordsRequestEntry> requests) {
+        protected CompletableFuture<?> submitRequestsToApi(List<PutRecordsRequestEntry> requests) {
             // create a batch request
             PutRecordsRequest batchRequest = PutRecordsRequest
                     .builder()

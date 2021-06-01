@@ -7,8 +7,8 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Tracks all currently in-flight requests
  */
-public class ApiSinkCommittable<ResponseT> extends ArrayList<CompletableFuture<ResponseT>> {
-    public ApiSinkCommittable(Collection<? extends CompletableFuture<ResponseT>> c) {
+public class ApiBasedSinkCommittable extends ArrayList<CompletableFuture<?>> {
+    public ApiBasedSinkCommittable(Collection<? extends CompletableFuture<?>> c) {
         super(c);
     }
 }
