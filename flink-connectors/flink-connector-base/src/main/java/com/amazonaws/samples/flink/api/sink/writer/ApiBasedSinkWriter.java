@@ -1,6 +1,6 @@
 package com.amazonaws.samples.flink.api.sink.writer;
 
-import com.amazonaws.samples.flink.api.sink.committer.ApiSinkCommittable;
+import com.amazonaws.samples.flink.api.sink.committer.ApiBasedSinkCommittable;
 import org.apache.flink.api.connector.sink.SinkWriter;
 
 import java.io.IOException;
@@ -8,6 +8,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.function.Function;
@@ -17,9 +18,9 @@ import org.apache.logging.log4j.Logger;
 import static org.apache.flink.util.Preconditions.checkArgument;
 
 
-public abstract class ApiWriter<InputT, RequestT extends Serializable, ResponseT> implements SinkWriter<InputT, ApiSinkCommittable<ResponseT>, ApiWriterState<RequestT>> {
+public abstract class ApiBasedSinkWriter<InputT, RequestT extends Serializable> implements SinkWriter<InputT, ApiBasedSinkCommittable, ApiBasedSinkWriterState<RequestT>> {
 
-    static final Logger logger = LogManager.getLogger(ApiWriter.class);
+    static final Logger logger = LogManager.getLogger(ApiBasedSinkWriter.class);
 
     /**
      * This function specifies the mapping between elements of a stream to
@@ -59,7 +60,7 @@ public abstract class ApiWriter<InputT, RequestT extends Serializable, ResponseT
      * @return a future that completes when all requests have been successfully
      * put to the API or were requeued
      */
-    protected abstract CompletableFuture<ResponseT> submitRequestsToApi(List<RequestT> requests);
+    protected abstract CompletableFuture<?> submitRequestsToApi(List<RequestT> requests);
 
 
     /**
@@ -78,7 +79,7 @@ public abstract class ApiWriter<InputT, RequestT extends Serializable, ResponseT
      * new (retry) request from the response and add that back to the queue for
      * later retry.
      */
-    private transient final LinkedBlockingDeque<RequestT> bufferedRequests = new LinkedBlockingDeque<>();
+    private transient final BlockingDeque<RequestT> bufferedRequests = new LinkedBlockingDeque<>();
 
 
     /**
@@ -93,13 +94,17 @@ public abstract class ApiWriter<InputT, RequestT extends Serializable, ResponseT
      * To complete a checkpoint, we need to make sure that no requests are in
      * flight, as they may fail which could then lead to data loss.
      */
-    private final LinkedBlockingDeque<CompletableFuture<ResponseT>> inFlightRequests = new LinkedBlockingDeque<>();
+    private final BlockingDeque<CompletableFuture<?>> inFlightRequests = new LinkedBlockingDeque<>();
 
 
 
     @Override
     public void write(InputT element, Context context) throws IOException {
-        bufferedRequests.offerLast(elementToRequest.apply(element));
+        try {
+            bufferedRequests.putLast(elementToRequest.apply(element));
+        } catch (InterruptedException e) {
+            //TODO: handle exception
+        }
 
         flush();  // just for testing
     }
@@ -107,8 +112,12 @@ public abstract class ApiWriter<InputT, RequestT extends Serializable, ResponseT
     /**
      * Put a failed request back into the internal queue to retry later.
      */
-    public void requeueFailedRequest(RequestT request) {
-        bufferedRequests.offerFirst(request);
+    protected void requeueFailedRequest(RequestT request) {
+        try {
+            bufferedRequests.putFirst(request);
+        } catch (InterruptedException e) {
+            //TODO: handle exception
+        }
     }
 
 
@@ -116,7 +125,7 @@ public abstract class ApiWriter<InputT, RequestT extends Serializable, ResponseT
 
     private static final int BATCH_SIZE = 100;       // just for testing purposes
 
-    public ApiWriter(Function<InputT, RequestT> elementToRequest) {
+    public ApiBasedSinkWriter(Function<InputT, RequestT> elementToRequest) {
         this.elementToRequest = elementToRequest;
     }
 
@@ -152,7 +161,7 @@ public abstract class ApiWriter<InputT, RequestT extends Serializable, ResponseT
      * created during a checkpoint.
      */
     @Override
-    public List<ApiSinkCommittable<ResponseT>> prepareCommit(boolean flush) throws IOException {
+    public List<ApiBasedSinkCommittable> prepareCommit(boolean flush) throws IOException {
         if (flush) {
             flush();
         }
@@ -161,7 +170,7 @@ public abstract class ApiWriter<InputT, RequestT extends Serializable, ResponseT
 
         //block submission of new api calls during checkpointing, so that now new in-flight requests are created;
 
-        ApiSinkCommittable<ResponseT> committable = new ApiSinkCommittable<>(inFlightRequests);
+        ApiBasedSinkCommittable committable = new ApiBasedSinkCommittable(inFlightRequests);
         inFlightRequests.clear();
 
         return Collections.singletonList(committable);
@@ -172,10 +181,10 @@ public abstract class ApiWriter<InputT, RequestT extends Serializable, ResponseT
      * checkpoint/savepoint.
      */
     @Override
-    public List<ApiWriterState<RequestT>> snapshotState() throws IOException {
+    public List<ApiBasedSinkWriterState<RequestT>> snapshotState() throws IOException {
         checkArgument(inFlightRequests.isEmpty());
 
-        ApiWriterState<RequestT> state = new ApiWriterState<>(bufferedRequests);
+        ApiBasedSinkWriterState<RequestT> state = new ApiBasedSinkWriterState<>(bufferedRequests);
 
         //enable submission of new api calls once checkpoint has been completed
 

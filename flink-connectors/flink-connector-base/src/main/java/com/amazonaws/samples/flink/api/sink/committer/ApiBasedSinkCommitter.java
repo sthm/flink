@@ -9,13 +9,13 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
-public class ApiCommitter<ResponseT> implements Committer<ApiSinkCommittable<ResponseT>> {
-    static final Logger logger = LogManager.getLogger(ApiCommitter.class);
+public class ApiBasedSinkCommitter implements Committer<ApiBasedSinkCommittable> {
+    static final Logger logger = LogManager.getLogger(ApiBasedSinkCommitter.class);
 
     @Override
-    public List<ApiSinkCommittable<ResponseT>> commit(List<ApiSinkCommittable<ResponseT>> committables) throws IOException {
+    public List<ApiBasedSinkCommittable> commit(List<ApiBasedSinkCommittable> committables) throws IOException {
 
-        for (ApiSinkCommittable<ResponseT> committable : committables) {
+        for (ApiBasedSinkCommittable committable : committables) {
             if (committable == null) {
                 continue;
             }
