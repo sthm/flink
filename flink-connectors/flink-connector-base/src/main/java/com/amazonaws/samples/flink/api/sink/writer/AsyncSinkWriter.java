@@ -80,16 +80,17 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
 
 
     /**
-     * Tracks all async put calls that have been executed since the last
-     * checkpoint. They may already have been completed (successfully or
-     * unsuccessfully). Unsuccessful requests need to be handled by the logic in
-     * {@code submitRequestsToApi}.
+     * Tracks all async requests that have been executed since the last
+     * checkpoint. Requests that already completed (successfully or
+     * unsuccessfully) are automatically removed from the queue. Any request
+     * entry that was not successfully persisted need to be handled and retried
+     * by the logic in {@code submitRequestsToApi}.
      * <p>
-     * There is a limit on the number of concurrent (async) requests that can
-     * be handled by the client library.
+     * There is a limit on the number of concurrent (async) requests that can be
+     * handled by the client library.
      * <p>
      * To complete a checkpoint, we need to make sure that no requests are in
-     * flight, as they may fail which could then lead to data loss.
+     * flight, as they may fail, which could then lead to data loss.
      */
     private Queue<CompletableFuture<?>> inFlightRequests = new ConcurrentLinkedQueue<>();
 
@@ -103,7 +104,16 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
     }
 
     /**
-     * Put a failed request entry back into the internal queue for later retry.
+     * A request or single request entries of a request may fail, eg, because of
+     * network issues or service side throttling. All request entries that
+     * failed with transient failures need to be re-queued with this method so
+     * that aren't lost and can be retried later.
+     * <p>
+     * Request entries that are causing the same error in a reproducible manner,
+     * eg, ill-formed request entries, must not be re-queued but the error needs
+     * to be handled in the logic of {@code submitRequestEntries}. Otherwise
+     * these request entries will be retried indefinitely, always causing the
+     * same error.
      */
     protected void requeueFailedRequestEntry(RequestEntryT requestEntry) {
         bufferedRequests.add(requestEntry);
@@ -135,6 +145,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
 
             logger.info("submit requests for {} elements", batch.size());
 
+            //TODO: add another future that removes the request from the queue once it completed
             inFlightRequests.add(submitRequestEntries(batch));
         }
     }
