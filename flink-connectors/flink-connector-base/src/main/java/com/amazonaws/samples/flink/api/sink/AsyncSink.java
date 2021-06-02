@@ -1,9 +1,7 @@
 package com.amazonaws.samples.flink.api.sink;
 
 
-import com.amazonaws.samples.flink.api.sink.committer.ApiBasedSinkCommitter;
-import com.amazonaws.samples.flink.api.sink.committer.ApiBasedSinkCommittable;
-import com.amazonaws.samples.flink.api.sink.writer.ApiBasedSinkWriterState;
+import com.amazonaws.samples.flink.api.sink.committer.AsyncSinkCommitter;
 import org.apache.flink.api.connector.sink.Committer;
 import org.apache.flink.api.connector.sink.GlobalCommitter;
 import org.apache.flink.api.connector.sink.Sink;
@@ -11,7 +9,9 @@ import org.apache.flink.core.io.SimpleVersionedSerializer;
 
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.Collection;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * The main design goal is to obtain a generic sink that implements the common functionality required, such as,
@@ -22,32 +22,32 @@ import java.util.Optional;
  *  - breaks ordering of events during reties
  *  - does not support exactly-once semantics
  */
-public abstract class ApiBasedSink<InputT, RequestT extends Serializable> implements Sink<InputT, ApiBasedSinkCommittable, ApiBasedSinkWriterState<RequestT>, Void> {
+public abstract class AsyncSink<InputT, RequestT extends Serializable> implements Sink<InputT, Collection<CompletableFuture<?>>, Collection<RequestT>, Void> {
     @Override
-    public Optional<Committer<ApiBasedSinkCommittable>> createCommitter() throws IOException {
-        return Optional.of(new ApiBasedSinkCommitter());
+    public Optional<Committer<Collection<CompletableFuture<?>>>> createCommitter() throws IOException {
+        return Optional.of(new AsyncSinkCommitter());
     }
 
     @Override
-    public Optional<GlobalCommitter<ApiBasedSinkCommittable, Void>> createGlobalCommitter() throws IOException {
+    public Optional<GlobalCommitter<Collection<CompletableFuture<?>>, Void>> createGlobalCommitter() throws IOException {
         return Optional.empty();
     }
 
     @Override
-    public Optional<SimpleVersionedSerializer<ApiBasedSinkCommittable>> getCommittableSerializer() {
-        return Optional.of(new SimpleVersionedSerializer<ApiBasedSinkCommittable>() {
+    public Optional<SimpleVersionedSerializer<Collection<CompletableFuture<?>>>> getCommittableSerializer() {
+        return Optional.of(new SimpleVersionedSerializer<Collection<CompletableFuture<?>>>() {
             @Override
             public int getVersion() {
                 return 0;
             }
 
             @Override
-            public byte[] serialize(ApiBasedSinkCommittable completableFutures) throws IOException {
+            public byte[] serialize(Collection<CompletableFuture<?>> completableFutures) throws IOException {
                 return new byte[0];
             }
 
             @Override
-            public ApiBasedSinkCommittable deserialize(int i, byte[] bytes) throws IOException {
+            public Collection<CompletableFuture<?>> deserialize(int i, byte[] bytes) throws IOException {
                 return null;
             }
         });
@@ -59,7 +59,7 @@ public abstract class ApiBasedSink<InputT, RequestT extends Serializable> implem
     }
 
     @Override
-    public Optional<SimpleVersionedSerializer<ApiBasedSinkWriterState<RequestT>>> getWriterStateSerializer() {
+    public Optional<SimpleVersionedSerializer<Collection<RequestT>>> getWriterStateSerializer() {
         return Optional.empty();
     }
 }

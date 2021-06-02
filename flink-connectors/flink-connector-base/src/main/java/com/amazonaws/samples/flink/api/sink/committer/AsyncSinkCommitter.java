@@ -5,17 +5,18 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
-public class ApiBasedSinkCommitter implements Committer<ApiBasedSinkCommittable> {
-    static final Logger logger = LogManager.getLogger(ApiBasedSinkCommitter.class);
+public class AsyncSinkCommitter implements Committer<Collection<CompletableFuture<?>>> {
+    static final Logger logger = LogManager.getLogger(AsyncSinkCommitter.class);
 
     @Override
-    public List<ApiBasedSinkCommittable> commit(List<ApiBasedSinkCommittable> committables) throws IOException {
+    public List<Collection<CompletableFuture<?>>> commit(List<Collection<CompletableFuture<?>>> committables) throws IOException {
 
-        for (ApiBasedSinkCommittable committable : committables) {
+        for (Collection<CompletableFuture<?>> committable : committables) {
             if (committable == null) {
                 continue;
             }
