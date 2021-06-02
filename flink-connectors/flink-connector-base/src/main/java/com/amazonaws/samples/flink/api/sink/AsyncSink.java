@@ -22,7 +22,7 @@ import java.util.concurrent.CompletableFuture;
  *  - breaks ordering of events during reties
  *  - does not support exactly-once semantics
  */
-public abstract class AsyncSink<InputT, RequestT extends Serializable> implements Sink<InputT, Collection<CompletableFuture<?>>, Collection<RequestT>, Void> {
+public abstract class AsyncSink<InputT, RequestEntryT extends Serializable> implements Sink<InputT, Collection<CompletableFuture<?>>, Collection<RequestEntryT>, Void> {
     @Override
     public Optional<Committer<Collection<CompletableFuture<?>>>> createCommitter() throws IOException {
         return Optional.of(new AsyncSinkCommitter());
@@ -59,7 +59,7 @@ public abstract class AsyncSink<InputT, RequestT extends Serializable> implement
     }
 
     @Override
-    public Optional<SimpleVersionedSerializer<Collection<RequestT>>> getWriterStateSerializer() {
+    public Optional<SimpleVersionedSerializer<Collection<RequestEntryT>>> getWriterStateSerializer() {
         return Optional.empty();
     }
 }

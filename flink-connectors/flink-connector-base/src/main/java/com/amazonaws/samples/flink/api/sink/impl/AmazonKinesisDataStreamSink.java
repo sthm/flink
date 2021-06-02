@@ -7,7 +7,10 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.kinesis.KinesisAsyncClient;
-import software.amazon.awssdk.services.kinesis.model.*;
+import software.amazon.awssdk.services.kinesis.model.PutRecordsRequest;
+import software.amazon.awssdk.services.kinesis.model.PutRecordsRequestEntry;
+import software.amazon.awssdk.services.kinesis.model.PutRecordsResponse;
+import software.amazon.awssdk.services.kinesis.model.PutRecordsResultEntry;
 
 import java.io.IOException;
 import java.util.Collection;
@@ -68,11 +71,11 @@ public class AmazonKinesisDataStreamSink<InputT> extends AsyncSink<InputT, PutRe
         }
 
         @Override
-        protected CompletableFuture<?> submitRequestsToApi(List<PutRecordsRequestEntry> requests) {
+        protected CompletableFuture<?> submitRequestEntries(List<PutRecordsRequestEntry> requestEntries) {
             // create a batch request
             PutRecordsRequest batchRequest = PutRecordsRequest
                     .builder()
-                    .records(requests)
+                    .records(requestEntries)
                     .streamName(streamName)
                     .build();
 
@@ -95,9 +98,9 @@ public class AmazonKinesisDataStreamSink<InputT> extends AsyncSink<InputT, PutRe
 
                         for (int i = 0; i < records.size(); i++) {
                             if (records.get(i).errorCode() != null) {
-                                requeueFailedRequest(requests.get(i));
+                                requeueFailedRequestEntry(requestEntries.get(i));
 
-                                logger.warn("Retrying message: {}", requests.get(i));
+                                logger.warn("Retrying message: {}", requestEntries.get(i));
                             }
                         }
                     }
