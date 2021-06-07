@@ -29,7 +29,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * The request entries contain all relevant information required to create
      * and sent the actual request. Eg, for Kinesis Data Streams, the request
      * contains the payload and the partition key. The requests are buffered by
-     * the AipWriter and sent to the API when the {@code submitRequestsToApi}
+     * the AipWriter and sent to the API when the {@code submitRequestEntries}
      * method is invoked.
      */
     private final Function<InputT, RequestEntryT> elementToRequest;
@@ -46,7 +46,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * by batching together multiple request entries to increase efficiency).
      * The logic also needs to identify individual request entries that were not
      * persisted successfully and resubmit them using the {@code
-     * requeueFailedRequest} method.
+     * requeueFailedRequestEntry} method.
      * <p>
      * The method returns a future that indicates, once completed, that all
      * request entries that have been passed to the method on invocation have
