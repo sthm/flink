@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.Serializable;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Function;
 
@@ -19,6 +20,8 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
     static final Logger logger = LogManager.getLogger(AsyncSinkWriter.class);
 
     /**
+     * FIXME: to be replaced with appropriate interface
+     *
      * This function specifies the mapping between elements of a stream to
      * request entries that can be sent to the API. The mapping is provided by
      * the end-user of a sink, not the sink creator.
@@ -34,19 +37,20 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
 
     /**
      * This method specifies how to persist buffered request entries into the
-     * sink. It is implemented when a new endpoint or service should be
-     * supported.
+     * sink. It is implemented when support for a new destination is
+     * implemented.
      * <p>
      * The method is invoked with a set of request entries according to the
-     * buffering hints. The logic then needs to create and execute the request
-     * against the API endpoint (ideally by batching together multiple request
-     * entries to increase efficiency). The logic also needs to identify
-     * individual request entries that were not persisted successfully and
-     * resubmit them using the {@code requeueFailedRequest} method.
+     * buffering hints (and the valid limits of the destination). The logic then
+     * needs to create and execute the request against the destination (ideally
+     * by batching together multiple request entries to increase efficiency).
+     * The logic also needs to identify individual request entries that were not
+     * persisted successfully and resubmit them using the {@code
+     * requeueFailedRequest} method.
      * <p>
      * The method returns a future that indicates, once completed, that all
      * request entries that have been passed to the method on invocation have
-     * either successfully completed or the request entries have been
+     * either been successfully persisted in the destination or have been
      * re-queued.
      * <p>
      * During checkpointing, the sink needs to ensure that there are no
@@ -63,11 +67,11 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
 
     /**
      * Buffer to hold request entries that should be persisted into the
-     * respective endpoint.
+     * destination.
      * <p>
-     * A request entry contain all relevant details to make a request to the
-     * respective API. Eg, for Kinesis a request entry contains the payload and
-     * partition key.
+     * A request entry contain all relevant details to make a call to the
+     * destination. Eg, for Kinesis Data Streams a request entry contains the
+     * payload and partition key.
      * <p>
      * It seems more natural to buffer InputT, ie, the events that should be
      * persisted, rather than RequestEntryT. However, in practice, the response
@@ -76,18 +80,18 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * new (retry) request entry from the response and add that back to the
      * queue for later retry.
      */
-    private final Queue<RequestEntryT> bufferedRequests = new ConcurrentLinkedQueue<>();
+    private final Deque<RequestEntryT> bufferedRequests = new ConcurrentLinkedDeque<>();
 
 
     /**
-     * Tracks all async requests that have been executed since the last
-     * checkpoint. Requests that already completed (successfully or
-     * unsuccessfully) are automatically removed from the queue. Any request
-     * entry that was not successfully persisted need to be handled and retried
-     * by the logic in {@code submitRequestsToApi}.
+     * Tracks all pending async calls that have been executed since the last
+     * checkpoint. Calls that already completed (successfully or unsuccessfully)
+     * are automatically removed from the queue. Any request entry that was not
+     * successfully persisted need to be handled and retried by the logic in
+     * {@code submitRequestsToApi}.
      * <p>
      * There is a limit on the number of concurrent (async) requests that can be
-     * handled by the client library.
+     * handled by the client library. This limit must be checked before issunin
      * <p>
      * To complete a checkpoint, we need to make sure that no requests are in
      * flight, as they may fail, which could then lead to data loss.
@@ -98,7 +102,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
 
     @Override
     public void write(InputT element, Context context) throws IOException {
-        bufferedRequests.add(elementToRequest.apply(element));
+        bufferedRequests.offerLast(elementToRequest.apply(element));
 
         flush();  // just for testing
     }
@@ -116,7 +120,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * same error.
      */
     protected void requeueFailedRequestEntry(RequestEntryT requestEntry) {
-        bufferedRequests.add(requestEntry);
+        bufferedRequests.offerFirst(requestEntry);
     }
 
 
@@ -136,6 +140,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      */
     public void flush() {
         while (bufferedRequests.size() >= BATCH_SIZE) {
+            // create a batch of request entries that should be persisted in the destination
             ArrayList<RequestEntryT> batch = new ArrayList<>();
 
             for (int i=0; i<BATCH_SIZE; i++) {
@@ -145,8 +150,16 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
 
             logger.info("submit requests for {} elements", batch.size());
 
-            //TODO: add another future that removes the request from the queue once it completed
-            inFlightRequests.add(submitRequestEntries(batch));
+            // call the destination specific code that actually persists the request entries
+            CompletableFuture<?> future = submitRequestEntries(batch);
+
+            // track all (async) in flight requests
+            inFlightRequests.add(future);
+
+            // remove the request from the tracking queue once it competed
+            future.whenComplete((response, err) -> {
+                inFlightRequests.remove(future);
+            });
         }
     }
 

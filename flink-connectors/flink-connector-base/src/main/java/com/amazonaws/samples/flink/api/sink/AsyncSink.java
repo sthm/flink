@@ -14,13 +14,21 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * The main design goal is to obtain a generic sink that implements the common functionality required, such as,
- * buffering/batching events and retry capabilities. The design biases on extensibility to be applicable to a broad
- * coverage of different API endpoints.
- *
+ * A generic sink for destinations that provide an async client to persist
+ * data.
+ * <p>
+ * The design of the sink focusses on extensibility and a broad support of
+ * destinations. The core of the sink is kept generic and free of any connector
+ * specific dependencies. The sink is designed to participate in checkpointing
+ * to provide at-least once semantics, but it is limited to destinations that
+ * provide a client that supports async requests.
+ * <p>
  * Limitations:
- *  - breaks ordering of events during reties
- *  - does not support exactly-once semantics
+ * <ul>
+ *   <li>The sink is designed for destinations that provide an async client. If you cannot persist data into the sink in an async fashion, you cannot leverage the sink.</li>
+ *   <li>The sink tries to persist InputTs in the order they are added to the sink, but reorderings may still occur, eg, when RequestEntryTs need to be retried.</li>
+ *   <li>We are not considering support for exactly-once semantics at this point.</li>
+ * </ul>
  */
 public abstract class AsyncSink<InputT, RequestEntryT extends Serializable> implements Sink<InputT, Collection<CompletableFuture<?>>, Collection<RequestEntryT>, Void> {
     @Override
@@ -35,6 +43,8 @@ public abstract class AsyncSink<InputT, RequestEntryT extends Serializable> impl
 
     @Override
     public Optional<SimpleVersionedSerializer<Collection<CompletableFuture<?>>>> getCommittableSerializer() {
+        // FIXME: return Optional.empty(); causes a runtime exception
+
         return Optional.of(new SimpleVersionedSerializer<Collection<CompletableFuture<?>>>() {
             @Override
             public int getVersion() {
