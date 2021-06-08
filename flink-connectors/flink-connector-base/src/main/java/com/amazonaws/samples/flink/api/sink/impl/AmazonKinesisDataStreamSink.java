@@ -2,6 +2,7 @@ package com.amazonaws.samples.flink.api.sink.impl;
 
 import com.amazonaws.samples.flink.api.sink.AsyncSink;
 import com.amazonaws.samples.flink.api.sink.writer.AsyncSinkWriter;
+import com.amazonaws.samples.flink.api.sink.writer.ElementConverter;
 import org.apache.flink.api.connector.sink.SinkWriter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -16,7 +17,6 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Function;
 
 public class AmazonKinesisDataStreamSink<InputT> extends AsyncSink<InputT, PutRecordsRequestEntry> {
 
@@ -24,12 +24,24 @@ public class AmazonKinesisDataStreamSink<InputT> extends AsyncSink<InputT, PutRe
 
     private final String streamName;
     private final static KinesisAsyncClient client = KinesisAsyncClient.create();
-//    private final static Function<InputT, PutRecordsRequestEntry> elementToRequest;
+    private final ElementConverter<InputT, PutRecordsRequestEntry> elementConverter;
 
     /**
      * Basic service properties and limits. Supported requests per sec, max batch size, max items per batch, etc.
      */
     private Object serviceProperties;
+
+    private final ElementConverter<InputT, PutRecordsRequestEntry> DEFAULT_ELEMENT_CONVERTER = new ElementConverter<InputT, PutRecordsRequestEntry>() {
+        @Override
+        public PutRecordsRequestEntry apply(InputT element, SinkWriter.Context context) {
+            return PutRecordsRequestEntry
+                    .builder()
+                    .data(SdkBytes.fromUtf8String(element.toString()))
+                    .partitionKey(String.valueOf(element.hashCode()))
+                    .build();
+        }
+    };
+
 
     @Override
     public SinkWriter<InputT, Collection<CompletableFuture<?>>, Collection<PutRecordsRequestEntry>> createWriter(InitContext context, List<Collection<PutRecordsRequestEntry>> states) throws IOException {
@@ -37,37 +49,25 @@ public class AmazonKinesisDataStreamSink<InputT> extends AsyncSink<InputT, PutRe
     }
 
 
-    public AmazonKinesisDataStreamSink(String streamName, Function<InputT, PutRecordsRequestEntry> elementToRequest, KinesisAsyncClient client) {
+    public AmazonKinesisDataStreamSink(String streamName, ElementConverter<InputT, PutRecordsRequestEntry> elementConverter, KinesisAsyncClient client) {
         this.streamName = streamName;
-//        this.elementToRequest = elementToRequest;
+        this.elementConverter = elementConverter;
 //        this.client = client;
 
         // verify that user supplied buffering strategy respects service specific limits
     }
 
     public AmazonKinesisDataStreamSink(String streamName) {
-        this(
-                streamName,
-                element ->
-                        PutRecordsRequestEntry
-                                .builder()
-                                .data(SdkBytes.fromUtf8String(element.toString()))
-                                .partitionKey(element.toString())
-                                .build(),
-                KinesisAsyncClient.create()
-        );
+        this.streamName = streamName;
+        this.elementConverter = DEFAULT_ELEMENT_CONVERTER;
+//        this.client = KinesisAsyncClient.create();
     }
 
 
     private class AmazonKinesisDataStreamWriter extends AsyncSinkWriter<InputT, PutRecordsRequestEntry> {
 
         public AmazonKinesisDataStreamWriter() {
-            super(element ->
-                    PutRecordsRequestEntry
-                            .builder()
-                            .data(SdkBytes.fromUtf8String(element.toString()))
-                            .partitionKey(String.valueOf(element.hashCode()))
-                            .build());
+            super(elementConverter);
         }
 
         @Override
