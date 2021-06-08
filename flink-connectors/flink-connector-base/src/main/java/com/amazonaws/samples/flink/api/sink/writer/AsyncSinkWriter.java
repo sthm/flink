@@ -10,29 +10,22 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.function.Function;
-
-import static org.apache.flink.util.Preconditions.checkArgument;
 
 
 public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable> implements SinkWriter<InputT, Collection<CompletableFuture<?>>, Collection<RequestEntryT>> {
 
     static final Logger logger = LogManager.getLogger(AsyncSinkWriter.class);
 
+
     /**
-     * FIXME: to be replaced with appropriate interface
-     *
-     * This function specifies the mapping between elements of a stream to
-     * request entries that can be sent to the API. The mapping is provided by
-     * the end-user of a sink, not the sink creator.
+     * A mapping between for the elements of a stream to request entries that
+     * can be sent to the destination.
      * <p>
-     * The request entries contain all relevant information required to create
-     * and sent the actual request. Eg, for Kinesis Data Streams, the request
-     * contains the payload and the partition key. The requests are buffered by
-     * the AipWriter and sent to the API when the {@code submitRequestEntries}
-     * method is invoked.
+     * The resulting request * entry is buffered by the AsyncSinkWriter and sent
+     * to the destination when * the {@code submitRequestEntries} method is
+     * invoked.
      */
-    private final Function<InputT, RequestEntryT> elementToRequest;
+    private final ElementConverter<InputT, RequestEntryT> elementConverter;
 
 
     /**
@@ -99,10 +92,24 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
     private Queue<CompletableFuture<?>> inFlightRequests = new ConcurrentLinkedQueue<>();
 
 
+    /**
+     * Signals if enough RequestEntryTs have been buffered according to the user
+     * specified buffering hints to make a request against the destination. This
+     * functionality will be added to the sink interface by means of an
+     * additional FLIP.
+     *
+     * @return true if the sink is ready to create and send a request to the
+     * destionation
+     */
+    public boolean isAvailable() {
+        return true;
+    }
+
+
 
     @Override
     public void write(InputT element, Context context) throws IOException {
-        bufferedRequests.offerLast(elementToRequest.apply(element));
+        bufferedRequests.offerLast(elementConverter.apply(element, context));
 
         flush();  // just for testing
     }
@@ -128,8 +135,8 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
 
     private static final int BATCH_SIZE = 100;       // just for testing purposes
 
-    public AsyncSinkWriter(Function<InputT, RequestEntryT> elementToRequest) {
-        this.elementToRequest = elementToRequest;
+    public AsyncSinkWriter(ElementConverter<InputT, RequestEntryT> elementConverter) {
+        this.elementConverter = elementConverter;
     }
 
 
@@ -139,6 +146,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * just for testing purposes
      */
     public void flush() {
+        // TODO: better use min(BATCH_SIZE, queue.size()) ?
         while (bufferedRequests.size() >= BATCH_SIZE) {
              // limit number of concurrent in flight requests
              if (inFlightRequests.size() > 20) {
@@ -153,12 +161,10 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
              }
 
             // create a batch of request entries that should be persisted in the destination
-            ArrayList<RequestEntryT> batch = new ArrayList<>();
+            ArrayList<RequestEntryT> batch = new ArrayList<>(BATCH_SIZE);
 
-            // TODO: better use min(BATCH_SIZE, queue.size()) ?
             for (int i=0; i<BATCH_SIZE; i++) {
-                RequestEntryT request = bufferedRequests.remove();
-                batch.add(request);
+                batch.add(bufferedRequests.remove());
             }
 
             logger.info("submit requests for {} elements", batch.size());
@@ -166,7 +172,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
             // call the destination specific code that actually persists the request entries
             CompletableFuture<?> future = submitRequestEntries(batch);
 
-            // track all (async) in flight requests
+            // keep track of in flight request
             inFlightRequests.add(future);
 
             // remove the request from the tracking queue once it competed
@@ -182,9 +188,8 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * still healthy.
      * <p>
      * To not lose any requests, there cannot be any outstanding in-flight
-     * requests when a checkpoint/commit is in process. To this end, all
-     * in-flight requests need to be completed and no new requests can be
-     * created until a checkpoint/savepoint completed.
+     * requests when a commit is initialized. To this end, all in-flight
+     * requests need to be completed as part of the pre commit.
      */
     @Override
     public List<Collection<CompletableFuture<?>>> prepareCommit(boolean flush) throws IOException {
@@ -194,12 +199,10 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
 
         logger.info("Prepare commit. {} requests currently in flight.", inFlightRequests.size());
 
-        //TODO: block submission of new api calls during checkpointing, so that now new in-flight requests are created;
-
         // reuse current inFlightRequests as commitable and create empty queue to avoid copy and clearing
         List<Collection<CompletableFuture<?>>> committable = Collections.singletonList(inFlightRequests);
 
-        // during a checkpoint/savepoint, no new requests can be created, so it's save to create a new queue
+        // all in-flight requests are handled by the AsyncSinkCommiter and new elements cannot be added to the queue during a commit, so it's save to create a new queue
         inFlightRequests = new ConcurrentLinkedQueue<>();
 
         return committable;
@@ -213,10 +216,6 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      */
     @Override
     public List<Collection<RequestEntryT>> snapshotState() throws IOException {
-        checkArgument(inFlightRequests.isEmpty());
-
-        //TODO: enable submission of new api calls once checkpoint has been completed
-
         return Collections.singletonList(bufferedRequests);
     }
 
