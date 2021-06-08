@@ -98,11 +98,10 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * functionality will be added to the sink interface by means of an
      * additional FLIP.
      *
-     * @return true if the sink is ready to create and send a request to the
-     * destionation
+     * @return a future that will be completed once there is are record available to make a request against the destination
      */
-    public boolean isAvailable() {
-        return true;
+    public CompletableFuture<Void> isAvailable() {
+        return null;
     }
 
 
