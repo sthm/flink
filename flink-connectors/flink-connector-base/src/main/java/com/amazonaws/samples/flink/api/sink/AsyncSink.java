@@ -17,7 +17,7 @@ import java.util.concurrent.CompletableFuture;
  * A generic sink for destinations that provide an async client to persist
  * data.
  * <p>
- * The design of the sink focusses on extensibility and a broad support of
+ * The design of the sink focuses on extensibility and a broad support of
  * destinations. The core of the sink is kept generic and free of any connector
  * specific dependencies. The sink is designed to participate in checkpointing
  * to provide at-least once semantics, but it is limited to destinations that

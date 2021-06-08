@@ -140,9 +140,22 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      */
     public void flush() {
         while (bufferedRequests.size() >= BATCH_SIZE) {
+             // limit number of concurrent in flight requests
+             if (inFlightRequests.size() > 20) {
+                 try {
+                     logger.info("sleeping for 100 ms");
+
+                     Thread.sleep(100);
+                 } catch (InterruptedException e) {
+                     e.printStackTrace();
+                 }
+                 continue;
+             }
+
             // create a batch of request entries that should be persisted in the destination
             ArrayList<RequestEntryT> batch = new ArrayList<>();
 
+            // TODO: better use min(BATCH_SIZE, queue.size()) ?
             for (int i=0; i<BATCH_SIZE; i++) {
                 RequestEntryT request = bufferedRequests.remove();
                 batch.add(request);
