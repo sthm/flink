@@ -25,8 +25,8 @@ import java.util.concurrent.CompletableFuture;
  * <p>
  * Limitations:
  * <ul>
- *   <li>The sink is designed for destinations that provide an async client. If you cannot persist data into the sink in an async fashion, you cannot leverage the sink.</li>
- *   <li>The sink tries to persist InputTs in the order they are added to the sink, but reorderings may still occur, eg, when RequestEntryTs need to be retried.</li>
+ *   <li>The sink is designed for destinations that provide an async client. Destinations that cannot ingest events in an async fashion cannot be supported by the sink.</li>
+ *   <li>The sink usually persist InputTs in the order they are added to the sink, but reorderings may occur, eg, when RequestEntryTs need to be retried.</li>
  *   <li>We are not considering support for exactly-once semantics at this point.</li>
  * </ul>
  */

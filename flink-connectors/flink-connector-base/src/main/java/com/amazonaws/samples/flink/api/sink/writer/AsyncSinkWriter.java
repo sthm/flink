@@ -18,8 +18,8 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
 
 
     /**
-     * A mapping between for the elements of a stream to request entries that
-     * can be sent to the destination.
+     * The ElementConverter provides a  mapping between for the elements of a
+     * stream to request entries that can be sent to the destination.
      * <p>
      * The resulting request * entry is buffered by the AsyncSinkWriter and sent
      * to the destination when * the {@code submitRequestEntries} method is
@@ -30,8 +30,8 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
 
     /**
      * This method specifies how to persist buffered request entries into the
-     * sink. It is implemented when support for a new destination is
-     * implemented.
+     * destination. It is implemented when support for a new destination is
+     * added.
      * <p>
      * The method is invoked with a set of request entries according to the
      * buffering hints (and the valid limits of the destination). The logic then
@@ -50,8 +50,8 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * outstanding in-flight requests. Ie, that all futures returned by this
      * method are completed.
      *
-     * @param requestEntries a set of requests that should be sent to the API
-     *                       endpoint
+     * @param requestEntries a set of request entries that should be sent to the
+     *                       destination
      * @return a future that completes when all request entries have been
      * successfully persisted to the API or were re-queued
      */
@@ -84,7 +84,8 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * {@code submitRequestsToApi}.
      * <p>
      * There is a limit on the number of concurrent (async) requests that can be
-     * handled by the client library. This limit must be checked before issunin
+     * handled by the client library. This limit is enforced by checking the
+     * size of this queue before issuing new requests.
      * <p>
      * To complete a checkpoint, we need to make sure that no requests are in
      * flight, as they may fail, which could then lead to data loss.
@@ -98,7 +99,8 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * functionality will be added to the sink interface by means of an
      * additional FLIP.
      *
-     * @return a future that will be completed once there is are record available to make a request against the destination
+     * @return a future that will be completed once there is are record
+     * available to make a request against the destination
      */
     public CompletableFuture<Void> isAvailable() {
         return null;
@@ -114,10 +116,11 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
     }
 
     /**
-     * A request or single request entries of a request may fail, eg, because of
-     * network issues or service side throttling. All request entries that
-     * failed with transient failures need to be re-queued with this method so
-     * that aren't lost and can be retried later.
+     * The entire request may fail or single request entries that are part of
+     * the request may not be persisted successfully, eg, because of network
+     * issues or service side throttling. All request entries that failed with
+     * transient failures need to be re-queued with this method so that aren't
+     * lost and can be retried later.
      * <p>
      * Request entries that are causing the same error in a reproducible manner,
      * eg, ill-formed request entries, must not be re-queued but the error needs
@@ -188,7 +191,8 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * <p>
      * To not lose any requests, there cannot be any outstanding in-flight
      * requests when a commit is initialized. To this end, all in-flight
-     * requests need to be completed as part of the pre commit.
+     * requests need to be completed as part of the pre commit by the {@code
+     * AsyncSinkCommiter}.
      */
     @Override
     public List<Collection<CompletableFuture<?>>> prepareCommit(boolean flush) throws IOException {
