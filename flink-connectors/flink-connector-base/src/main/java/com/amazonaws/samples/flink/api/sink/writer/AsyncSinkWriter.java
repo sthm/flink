@@ -73,7 +73,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * new (retry) request entry from the response and add that back to the
      * queue for later retry.
      */
-    private final Deque<RequestEntryT> bufferedRequests = new ConcurrentLinkedDeque<>();
+    private final Deque<RequestEntryT> bufferedRequestEntries = new ConcurrentLinkedDeque<>();
 
 
     /**
@@ -99,18 +99,22 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * functionality will be added to the sink interface by means of an
      * additional FLIP.
      *
-     * @return a future that will be completed once there is are record
-     * available to make a request against the destination
+     * @return a future that will be completed once a request against the
+     * destination can be made
      */
-    public CompletableFuture<Void> isAvailable() {
-        return null;
+    public CompletableFuture<Boolean> isAvailable() {
+        boolean isAvailable =
+                bufferedRequestEntries.size() < MAX_BUFFERED_REQUESTS_ENTRIES &&
+                inFlightRequests.size() < MAX_IN_FLIGHT_REQUESTS;
+
+        return CompletableFuture.completedFuture(isAvailable);
     }
 
 
 
     @Override
     public void write(InputT element, Context context) throws IOException {
-        bufferedRequests.offerLast(elementConverter.apply(element, context));
+        bufferedRequestEntries.offerLast(elementConverter.apply(element, context));
 
         flush();  // just for testing
     }
@@ -129,13 +133,15 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * same error.
      */
     protected void requeueFailedRequestEntry(RequestEntryT requestEntry) {
-        bufferedRequests.offerFirst(requestEntry);
+        bufferedRequestEntries.offerFirst(requestEntry);
     }
 
 
 
 
     private static final int BATCH_SIZE = 100;       // just for testing purposes
+    private static final int MAX_IN_FLIGHT_REQUESTS = 20;       // just for testing purposes
+    private static final int MAX_BUFFERED_REQUESTS_ENTRIES = 1000;       // just for testing purposes
 
     public AsyncSinkWriter(ElementConverter<InputT, RequestEntryT> elementConverter) {
         this.elementConverter = elementConverter;
@@ -149,7 +155,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      */
     public void flush() {
         // TODO: better use min(BATCH_SIZE, queue.size()) ?
-        while (bufferedRequests.size() >= BATCH_SIZE) {
+        while (bufferedRequestEntries.size() >= BATCH_SIZE) {
              // limit number of concurrent in flight requests
              if (inFlightRequests.size() > 20) {
                  try {
@@ -166,7 +172,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
             ArrayList<RequestEntryT> batch = new ArrayList<>(BATCH_SIZE);
 
             for (int i=0; i<BATCH_SIZE; i++) {
-                batch.add(bufferedRequests.remove());
+                batch.add(bufferedRequestEntries.remove());
             }
 
             logger.info("submit requests for {} elements", batch.size());
@@ -219,7 +225,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      */
     @Override
     public List<Collection<RequestEntryT>> snapshotState() throws IOException {
-        return Collections.singletonList(bufferedRequests);
+        return Collections.singletonList(bufferedRequestEntries);
     }
 
 
