@@ -31,16 +31,12 @@ public class AmazonKinesisDataStreamSink<InputT> extends AsyncSink<InputT, PutRe
      */
     private Object serviceProperties;
 
-    private final ElementConverter<InputT, PutRecordsRequestEntry> DEFAULT_ELEMENT_CONVERTER = new ElementConverter<InputT, PutRecordsRequestEntry>() {
-        @Override
-        public PutRecordsRequestEntry apply(InputT element, SinkWriter.Context context) {
-            return PutRecordsRequestEntry
-                    .builder()
-                    .data(SdkBytes.fromUtf8String(element.toString()))
-                    .partitionKey(String.valueOf(element.hashCode()))
-                    .build();
-        }
-    };
+    private final ElementConverter<InputT, PutRecordsRequestEntry> SIMPLE_STRING_ELEMENT_CONVERTER =
+            (element, context) -> PutRecordsRequestEntry
+                .builder()
+                .data(SdkBytes.fromUtf8String(element.toString()))
+                .partitionKey(String.valueOf(element.hashCode()))
+                .build();
 
 
     @Override
@@ -59,7 +55,7 @@ public class AmazonKinesisDataStreamSink<InputT> extends AsyncSink<InputT, PutRe
 
     public AmazonKinesisDataStreamSink(String streamName) {
         this.streamName = streamName;
-        this.elementConverter = DEFAULT_ELEMENT_CONVERTER;
+        this.elementConverter = SIMPLE_STRING_ELEMENT_CONVERTER;
 //        this.client = KinesisAsyncClient.create();
     }
 
@@ -94,13 +90,13 @@ public class AmazonKinesisDataStreamSink<InputT> extends AsyncSink<InputT, PutRe
                     }
 
                     if (response.failedRecordCount() > 0) {
+                        logger.warn("Re-queueing {} messages", response.failedRecordCount());
+
                         List<PutRecordsResultEntry> records = response.records();
 
                         for (int i = 0; i < records.size(); i++) {
                             if (records.get(i).errorCode() != null) {
                                 requeueFailedRequestEntry(requestEntries.get(i));
-
-                                logger.warn("Retrying message: {}", requestEntries.get(i));
                             }
                         }
                     }
