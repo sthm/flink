@@ -139,7 +139,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
 
 
 
-    private static final int BATCH_SIZE = 100;       // just for testing purposes
+    private static final int MAX_BATCH_SIZE = 100;       // just for testing purposes
     private static final int MAX_IN_FLIGHT_REQUESTS = 20;       // just for testing purposes
     private static final int MAX_BUFFERED_REQUESTS_ENTRIES = 1000;       // just for testing purposes
 
@@ -154,8 +154,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * just for testing purposes
      */
     public void flush() {
-        // TODO: better use min(BATCH_SIZE, queue.size()) ?
-        while (bufferedRequestEntries.size() >= BATCH_SIZE) {
+        while (bufferedRequestEntries.size() >= MAX_BATCH_SIZE) {
              // limit number of concurrent in flight requests
              if (inFlightRequests.size() > 20) {
                  try {
@@ -169,10 +168,16 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
              }
 
             // create a batch of request entries that should be persisted in the destination
-            ArrayList<RequestEntryT> batch = new ArrayList<>(BATCH_SIZE);
+            ArrayList<RequestEntryT> batch = new ArrayList<>(MAX_BATCH_SIZE);
 
-            for (int i=0; i<BATCH_SIZE; i++) {
-                batch.add(bufferedRequestEntries.remove());
+            for (int i = 0; i < MAX_BATCH_SIZE; i++) {
+                try {
+                    batch.add(bufferedRequestEntries.remove());
+                } catch (NoSuchElementException e) {
+                    // try to create a batch with the desired number of records
+                    // if there are not enough elements, create a smaller batch (bufferedRequestEntries is concurrent and non-blocking)
+                    break;
+                }
             }
 
             logger.info("submit requests for {} elements", batch.size());

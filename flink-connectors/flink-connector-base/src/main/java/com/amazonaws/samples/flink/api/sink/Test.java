@@ -10,7 +10,7 @@ public class Test {
         // set up the streaming execution environment
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-        env.enableCheckpointing(10_000);
+        env.enableCheckpointing(60_000);
 
 //        DataStream<String> stream = env.readTextFile("s3://shausma-demo/part-10000.json");
         DataStream<String> stream = env.readTextFile("s3://shausma-nyc-tlc/yellow-trip-data/taxi-trips.json/dropoff_year=2010/part-00000-cdac5fe4-b823-4576-aeb7-7327b077476e.c000.json");
