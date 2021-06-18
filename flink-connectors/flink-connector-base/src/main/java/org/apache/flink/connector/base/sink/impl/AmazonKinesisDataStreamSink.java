@@ -1,8 +1,8 @@
-package com.amazonaws.samples.flink.api.sink.impl;
+package org.apache.flink.connector.base.sink.impl;
 
-import com.amazonaws.samples.flink.api.sink.AsyncSink;
-import com.amazonaws.samples.flink.api.sink.writer.AsyncSinkWriter;
-import com.amazonaws.samples.flink.api.sink.writer.ElementConverter;
+import org.apache.flink.connector.base.sink.AsyncSinkBase;
+import org.apache.flink.connector.base.sink.writer.AsyncSinkWriter;
+import org.apache.flink.connector.base.sink.writer.ElementConverter;
 import org.apache.flink.api.connector.sink.SinkWriter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -18,7 +18,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
-public class AmazonKinesisDataStreamSink<InputT> extends AsyncSink<InputT, PutRecordsRequestEntry> {
+public class AmazonKinesisDataStreamSink<InputT> extends AsyncSinkBase<InputT, PutRecordsRequestEntry> {
 
     private static final Logger logger = LogManager.getLogger(AmazonKinesisDataStreamSink.class);
 

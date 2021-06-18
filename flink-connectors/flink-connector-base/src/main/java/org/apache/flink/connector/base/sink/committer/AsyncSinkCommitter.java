@@ -1,4 +1,4 @@
-package com.amazonaws.samples.flink.api.sink.committer;
+package org.apache.flink.connector.base.sink.committer;
 
 import org.apache.flink.api.connector.sink.Committer;
 import org.apache.logging.log4j.LogManager;

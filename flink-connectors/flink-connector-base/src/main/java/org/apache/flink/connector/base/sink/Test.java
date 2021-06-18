@@ -1,6 +1,6 @@
-package com.amazonaws.samples.flink.api.sink;
+package org.apache.flink.connector.base.sink;
 
-import com.amazonaws.samples.flink.api.sink.impl.AmazonKinesisDataStreamSink;
+import org.apache.flink.connector.base.sink.impl.AmazonKinesisDataStreamSink;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 
