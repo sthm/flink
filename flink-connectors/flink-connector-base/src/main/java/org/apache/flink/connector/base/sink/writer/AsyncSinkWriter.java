@@ -1,4 +1,4 @@
-package com.amazonaws.samples.flink.api.sink.writer;
+package org.apache.flink.connector.base.sink.writer;
 
 import org.apache.flink.api.connector.sink.SinkWriter;
 import org.apache.logging.log4j.LogManager;

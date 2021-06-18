@@ -1,7 +1,7 @@
-package com.amazonaws.samples.flink.api.sink;
+package org.apache.flink.connector.base.sink;
 
 
-import com.amazonaws.samples.flink.api.sink.committer.AsyncSinkCommitter;
+import org.apache.flink.connector.base.sink.committer.AsyncSinkCommitter;
 import org.apache.flink.api.connector.sink.Committer;
 import org.apache.flink.api.connector.sink.GlobalCommitter;
 import org.apache.flink.api.connector.sink.Sink;
@@ -30,7 +30,7 @@ import java.util.concurrent.CompletableFuture;
  *   <li>We are not considering support for exactly-once semantics at this point.</li>
  * </ul>
  */
-public abstract class AsyncSink<InputT, RequestEntryT extends Serializable> implements Sink<InputT, Collection<CompletableFuture<?>>, Collection<RequestEntryT>, Void> {
+public abstract class AsyncSinkBase<InputT, RequestEntryT extends Serializable> implements Sink<InputT, Collection<CompletableFuture<?>>, Collection<RequestEntryT>, Void> {
     @Override
     public Optional<Committer<Collection<CompletableFuture<?>>>> createCommitter() throws IOException {
         return Optional.of(new AsyncSinkCommitter());
