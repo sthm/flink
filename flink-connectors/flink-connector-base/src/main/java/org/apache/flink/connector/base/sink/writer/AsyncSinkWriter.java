@@ -7,9 +7,7 @@ import org.apache.logging.log4j.Logger;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentLinkedDeque;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.*;
 
 
 public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable> implements SinkWriter<InputT, Collection<CompletableFuture<?>>, Collection<RequestEntryT>> {
@@ -73,7 +71,21 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * new (retry) request entry from the response and add that back to the
      * queue for later retry.
      */
-    private final Deque<RequestEntryT> bufferedRequestEntries = new ConcurrentLinkedDeque<>();
+    private final BlockingDeque<RequestEntryT> bufferedRequestEntries = new LinkedBlockingDeque<>(MAX_BUFFERED_REQUESTS_ENTRIES);
+
+
+    /**
+     * Buffer to hold request entries that need to be retired, eg, because of
+     * throttling applied at the destination.
+     * <p>
+     * As retries should be rare, this is a non-blocking queue (in contrast to
+     * {@code bufferedRequestEntries}). In this way, requests that need to be
+     * retried can quickly be added back to the internal buffer without blocking
+     * further processing. Moreover, in this way the implementation of {@code
+     * requeueFailedRequestEntry} does not have to deal with {@code
+     * InterruptedException}.
+     */
+    private final Queue<RequestEntryT> bufferedRequestEntryRetries = new ConcurrentLinkedQueue<>();
 
 
     /**
@@ -90,34 +102,24 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * To complete a checkpoint, we need to make sure that no requests are in
      * flight, as they may fail, which could then lead to data loss.
      */
-    private Queue<CompletableFuture<?>> inFlightRequests = new ConcurrentLinkedQueue<>();
-
-
-    /**
-     * Signals if enough RequestEntryTs have been buffered according to the user
-     * specified buffering hints to make a request against the destination. This
-     * functionality will be added to the sink interface by means of an
-     * additional FLIP.
-     *
-     * @return a future that will be completed once a request against the
-     * destination can be made
-     */
-    public CompletableFuture<Boolean> isAvailable() {
-        boolean isAvailable =
-                bufferedRequestEntries.size() < MAX_BUFFERED_REQUESTS_ENTRIES &&
-                inFlightRequests.size() < MAX_IN_FLIGHT_REQUESTS;
-
-        return CompletableFuture.completedFuture(isAvailable);
-    }
+    private BlockingDeque<CompletableFuture<?>> inFlightRequests = new LinkedBlockingDeque<>(MAX_IN_FLIGHT_REQUESTS);
 
 
 
     @Override
     public void write(InputT element, Context context) throws IOException {
-        bufferedRequestEntries.offerLast(elementConverter.apply(element, context));
+        try {
+            // blocks if too many events have been buffered
+            bufferedRequestEntries.putLast(elementConverter.apply(element, context));
 
-        flush();  // just for testing
+            // blocks if too many async requests are in flight
+            flush();
+        } catch (InterruptedException e) {
+            // FIXME: add exception to signature instead of swallowing it
+            Thread.currentThread().interrupt();
+        }
     }
+
 
     /**
      * The entire request may fail or single request entries that are part of
@@ -133,14 +135,14 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * same error.
      */
     protected void requeueFailedRequestEntry(RequestEntryT requestEntry) {
-        bufferedRequestEntries.offerFirst(requestEntry);
+        bufferedRequestEntryRetries.add(requestEntry);
     }
 
 
 
 
-    private static final int MAX_BATCH_SIZE = 100;       // just for testing purposes
-    private static final int MAX_IN_FLIGHT_REQUESTS = 20;       // just for testing purposes
+    private static final int MAX_BATCH_SIZE = 50;       // just for testing purposes
+    private static final int MAX_IN_FLIGHT_REQUESTS = 5;       // just for testing purposes
     private static final int MAX_BUFFERED_REQUESTS_ENTRIES = 1000;       // just for testing purposes
 
     public AsyncSinkWriter(ElementConverter<InputT, RequestEntryT> elementConverter) {
@@ -148,50 +150,46 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
     }
 
 
-
-
     /**
-     * just for testing purposes
+     * Persists buffered RequestsEntries into the destination by invoking {@code
+     * submitRequestEntries} with batches according to the user specified
+     * buffering hints.
+     *
+     * The method blocks if too many async requests are in flight.
      */
-    public void flush() {
-        while (bufferedRequestEntries.size() >= MAX_BATCH_SIZE) {
-             // limit number of concurrent in flight requests
-             if (inFlightRequests.size() > 20) {
-                 try {
-                     logger.info("sleeping for 100 ms");
-
-                     Thread.sleep(100);
-                 } catch (InterruptedException e) {
-                     e.printStackTrace();
-                 }
-                 continue;
-             }
+    private void flush() throws InterruptedException {
+        while (bufferedRequestEntries.size()+bufferedRequestEntryRetries.size() >= MAX_BATCH_SIZE) {
 
             // create a batch of request entries that should be persisted in the destination
             ArrayList<RequestEntryT> batch = new ArrayList<>(MAX_BATCH_SIZE);
 
-            for (int i = 0; i < MAX_BATCH_SIZE; i++) {
+            // prioritise retry events queued in bufferedRequestEntryRetries to minimize latency
+            while (batch.size() <= MAX_BATCH_SIZE && !bufferedRequestEntryRetries.isEmpty()) {
                 try {
-                    batch.add(bufferedRequestEntries.remove());
+                    batch.add(bufferedRequestEntryRetries.remove());
                 } catch (NoSuchElementException e) {
-                    // try to create a batch with the desired number of records
-                    // if there are not enough elements, create a smaller batch (bufferedRequestEntries is concurrent and non-blocking)
+                    // if there are not enough bufferedRequestEntryRetries elements, add elements from bufferedRequestEntries
                     break;
                 }
             }
 
-            logger.info("submit requests for {} elements", batch.size());
+            while (batch.size() <= MAX_BATCH_SIZE && !bufferedRequestEntries.isEmpty()) {
+                try {
+                    batch.add(bufferedRequestEntries.remove());
+                } catch (NoSuchElementException e) {
+                    // if there are not enough elements, just create a smaller batch
+                    break;
+                }
+            }
 
             // call the destination specific code that actually persists the request entries
             CompletableFuture<?> future = submitRequestEntries(batch);
 
-            // keep track of in flight request
-            inFlightRequests.add(future);
+            // keep track of in flight request; block if too many requests are in flight
+            inFlightRequests.put(future);
 
             // remove the request from the tracking queue once it competed
-            future.whenComplete((response, err) -> {
-                inFlightRequests.remove(future);
-            });
+            future.whenComplete((response, err) -> inFlightRequests.remove(future));
         }
     }
 
@@ -207,17 +205,13 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      */
     @Override
     public List<Collection<CompletableFuture<?>>> prepareCommit(boolean flush) throws IOException {
-        if (flush) {
-            flush();
-        }
-
         logger.info("Prepare commit. {} requests currently in flight.", inFlightRequests.size());
 
         // reuse current inFlightRequests as commitable and create empty queue to avoid copy and clearing
         List<Collection<CompletableFuture<?>>> committable = Collections.singletonList(inFlightRequests);
 
         // all in-flight requests are handled by the AsyncSinkCommiter and new elements cannot be added to the queue during a commit, so it's save to create a new queue
-        inFlightRequests = new ConcurrentLinkedQueue<>();
+        inFlightRequests = new LinkedBlockingDeque<>();
 
         return committable;
     }
@@ -230,7 +224,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      */
     @Override
     public List<Collection<RequestEntryT>> snapshotState() throws IOException {
-        return Collections.singletonList(bufferedRequestEntries);
+        return Arrays.asList(bufferedRequestEntryRetries, bufferedRequestEntries);
     }
 
 
