@@ -26,7 +26,7 @@ public class AsyncSinkCommitter implements Committer<Collection<CompletableFutur
             committable.forEach(CompletableFuture::join);
 
             // this function receives a reference to the original bufferedRequestEntries, so when all futures completed, the list should be empty
-            // (modulo race conditions where a completed future is just about to be removed=
+            // (modulo race conditions where a completed future is just about to be removed)
             assert(committables.isEmpty());
         }
 
