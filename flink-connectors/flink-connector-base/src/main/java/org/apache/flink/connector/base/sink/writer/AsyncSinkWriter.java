@@ -19,8 +19,8 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * The ElementConverter provides a  mapping between for the elements of a
      * stream to request entries that can be sent to the destination.
      * <p>
-     * The resulting request * entry is buffered by the AsyncSinkWriter and sent
-     * to the destination when * the {@code submitRequestEntries} method is
+     * The resulting request entry is buffered by the AsyncSinkWriter and sent
+     * to the destination when the {@code submitRequestEntries} method is
      * invoked.
      */
     private final ElementConverter<InputT, RequestEntryT> elementConverter;
@@ -71,7 +71,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * new (retry) request entry from the response and add that back to the
      * queue for later retry.
      */
-    private final BlockingDeque<RequestEntryT> bufferedRequestEntries = new LinkedBlockingDeque<>(MAX_BUFFERED_REQUESTS_ENTRIES);
+    private final BlockingQueue<RequestEntryT> bufferedRequestEntries = new LinkedBlockingDeque<>(MAX_BUFFERED_REQUESTS_ENTRIES);
 
 
     /**
@@ -84,8 +84,15 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * further processing. Moreover, in this way the implementation of {@code
      * requeueFailedRequestEntry} does not have to deal with {@code
      * InterruptedException}.
+     * <p>
+     * Having a separate queue for retires allows to preserve the order of
+     * retries based on the time the corresponding request failed.
+     * <p>
+     * As only failed request entries are added to the queue, the size of the
+     * queue is effectively bound by {@code MAX_BUFFERED_REQUESTS_ENTRIES} *
+     * {@code MAX_IN_FLIGHT_REQUESTS}.
      */
-    private final Queue<RequestEntryT> bufferedRequestEntryRetries = new ConcurrentLinkedQueue<>();
+    private final Queue<RequestEntryT> failedRequestEntries = new ConcurrentLinkedQueue<>();
 
 
     /**
@@ -102,15 +109,15 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * To complete a checkpoint, we need to make sure that no requests are in
      * flight, as they may fail, which could then lead to data loss.
      */
-    private BlockingDeque<CompletableFuture<?>> inFlightRequests = new LinkedBlockingDeque<>(MAX_IN_FLIGHT_REQUESTS);
+    private BlockingQueue<CompletableFuture<?>> inFlightRequests = new LinkedBlockingDeque<>(MAX_IN_FLIGHT_REQUESTS);
 
 
 
     @Override
     public void write(InputT element, Context context) throws IOException {
         try {
-            // blocks if too many events have been buffered
-            bufferedRequestEntries.putLast(elementConverter.apply(element, context));
+            // blocks if too many elements have been buffered
+            bufferedRequestEntries.put(elementConverter.apply(element, context));
 
             // blocks if too many async requests are in flight
             flush();
@@ -135,7 +142,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * same error.
      */
     protected void requeueFailedRequestEntry(RequestEntryT requestEntry) {
-        bufferedRequestEntryRetries.add(requestEntry);
+        failedRequestEntries.add(requestEntry);
     }
 
 
@@ -158,17 +165,17 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * The method blocks if too many async requests are in flight.
      */
     private void flush() throws InterruptedException {
-        while (bufferedRequestEntries.size()+bufferedRequestEntryRetries.size() >= MAX_BATCH_SIZE) {
+        while (bufferedRequestEntries.size()+ failedRequestEntries.size() >= MAX_BATCH_SIZE) {
 
             // create a batch of request entries that should be persisted in the destination
             ArrayList<RequestEntryT> batch = new ArrayList<>(MAX_BATCH_SIZE);
 
-            // prioritise retry events queued in bufferedRequestEntryRetries to minimize latency
-            while (batch.size() <= MAX_BATCH_SIZE && !bufferedRequestEntryRetries.isEmpty()) {
+            // prioritise retry events queued in failedRequestEntries to minimize latency for retries
+            while (batch.size() <= MAX_BATCH_SIZE && !failedRequestEntries.isEmpty()) {
                 try {
-                    batch.add(bufferedRequestEntryRetries.remove());
+                    batch.add(failedRequestEntries.remove());
                 } catch (NoSuchElementException e) {
-                    // if there are not enough bufferedRequestEntryRetries elements, add elements from bufferedRequestEntries
+                    // if there are not enough failedRequestEntries elements, add elements from bufferedRequestEntries
                     break;
                 }
             }
@@ -195,13 +202,14 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
 
 
     /**
-     * In flight requests may fail, but they will be retried if the sink is
-     * still healthy.
+     * In flight requests will be retried if the sink is still healthy. But if
+     * in-flight requests fail after a checkpoint has been triggered and Flink
+     * needs to recover from the checkpoint, the (failed) in-flight requests are
+     * gone and cannot be retried. Hence, there cannot be any outstanding
+     * in-flight requests when a commit is initialized.
      * <p>
-     * To not lose any requests, there cannot be any outstanding in-flight
-     * requests when a commit is initialized. To this end, all in-flight
-     * requests need to be completed as part of the pre commit by the {@code
-     * AsyncSinkCommiter}.
+     * To this end, all in-flight requests need to be passed to the {@code
+     * AsyncSinkCommiter} in order to be completed as part of the pre commit.
      */
     @Override
     public List<Collection<CompletableFuture<?>>> prepareCommit(boolean flush) throws IOException {
@@ -217,14 +225,15 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
     }
 
     /**
-     * All in-flight requests have been completed, but there may still be
-     * request entries in the internal buffer that are yet to be sent to the
-     * endpoint. These request entries are stored in the snapshot state so that
-     * they don't get lost in case of a failure/restart of the application.
+     * All in-flight requests that are relevant for the snapshot have been
+     * completed, but there may still be request entries in the internal buffers
+     * that are yet to be sent to the endpoint. These request entries are stored
+     * in the snapshot state so that they don't get lost in case of a
+     * failure/restart of the application.
      */
     @Override
     public List<Collection<RequestEntryT>> snapshotState() throws IOException {
-        return Arrays.asList(bufferedRequestEntryRetries, bufferedRequestEntries);
+        return Arrays.asList(failedRequestEntries, bufferedRequestEntries);
     }
 
 
