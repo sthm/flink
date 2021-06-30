@@ -52,7 +52,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      *                       request entries that have been passed to the method
      *                       on invocation have either been successfully
      *                       persisted in the destination or have been
-     *                       re-queued
+     *                       re-queued through {@code requeueFailedRequestEntry}
      */
     protected abstract void submitRequestEntries(List<RequestEntryT> requestEntries, ResultFuture<?> requestResult);
 
@@ -89,9 +89,11 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * Having a separate queue for retires allows to preserve the order of
      * retries based on the time the corresponding request failed.
      * <p>
-     * As only failed request entries are added to the queue, the size of the
-     * queue is effectively bound by {@code MAX_BUFFERED_REQUESTS_ENTRIES} *
-     * {@code MAX_IN_FLIGHT_REQUESTS}.
+     * Only failed request entries are added to the queue and requests entries
+     * in this queue are chosen over request entries from {@code
+     * bufferedRequestEntries} when the next request is made against the
+     * destination. So the size of the queue is effectively bound by {@code
+     * MAX_BUFFERED_REQUESTS_ENTRIES} * {@code MAX_IN_FLIGHT_REQUESTS}.
      */
     private final Queue<RequestEntryT> failedRequestEntries = new ConcurrentLinkedQueue<>();
 
@@ -104,14 +106,14 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * {@code submitRequestsToApi}.
      * <p>
      * There is a limit on the number of concurrent (async) requests that can be
-     * handled by the client library. This limit is enforced by checking the
-     * size of this queue before issuing new requests.
+     * handled by the client library. This limit is enforced by acquiring a
+     * semaphore before making a request. We are using a fair semaphore to keep
+     * the amount of reorderings induced by the sink to a minimum.
      * <p>
      * To complete a checkpoint, we need to make sure that no requests are in
      * flight, as they may fail, which could then lead to data loss.
      */
-    private Semaphore inFlightSlotsAvailable = new Semaphore(MAX_IN_FLIGHT_REQUESTS);
-
+    private Semaphore inFlightSlotsAvailable = new Semaphore(MAX_IN_FLIGHT_REQUESTS, true);
 
 
     @Override
@@ -147,11 +149,10 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
     }
 
 
-
-
     private static final int MAX_BATCH_SIZE = 50;       // just for testing purposes
     private static final int MAX_IN_FLIGHT_REQUESTS = 5;       // just for testing purposes
     private static final int MAX_BUFFERED_REQUESTS_ENTRIES = 1000;       // just for testing purposes
+
 
     public AsyncSinkWriter(ElementConverter<InputT, RequestEntryT> elementConverter) {
         this.elementConverter = elementConverter;
@@ -230,10 +231,11 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
         // all in-flight requests are handled by the AsyncSinkCommiter
         // new elements that are added to the internal buffer during are not relevant for this commit
         // so it's save to create a new semaphore that tracks these new elements
-        inFlightSlotsAvailable = new Semaphore(MAX_IN_FLIGHT_REQUESTS);
+        inFlightSlotsAvailable = new Semaphore(MAX_IN_FLIGHT_REQUESTS, true);
 
         return committable;
     }
+
 
     /**
      * All in-flight requests that are relevant for the snapshot have been
@@ -246,7 +248,6 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
     public List<Collection<RequestEntryT>> snapshotState() throws IOException {
         return Arrays.asList(failedRequestEntries, bufferedRequestEntries);
     }
-
 
 
     @Override
