@@ -1,17 +1,17 @@
 package org.apache.flink.connector.base.sink;
 
 
-import org.apache.flink.connector.base.sink.committer.AsyncSinkCommitter;
 import org.apache.flink.api.connector.sink.Committer;
 import org.apache.flink.api.connector.sink.GlobalCommitter;
 import org.apache.flink.api.connector.sink.Sink;
+import org.apache.flink.connector.base.sink.committer.AsyncSinkCommitter;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Semaphore;
 
 /**
  * A generic sink for destinations that provide an async client to persist
@@ -30,34 +30,36 @@ import java.util.concurrent.CompletableFuture;
  *   <li>We are not considering support for exactly-once semantics at this point.</li>
  * </ul>
  */
-public abstract class AsyncSinkBase<InputT, RequestEntryT extends Serializable> implements Sink<InputT, Collection<CompletableFuture<?>>, Collection<RequestEntryT>, Void> {
+public abstract class AsyncSinkBase<InputT, RequestEntryT extends Serializable> implements Sink<InputT, Semaphore, Collection<RequestEntryT>, Void> {
+    private static final int MAX_IN_FLIGHT_REQUESTS = 5;       // just for testing purposes
+
     @Override
-    public Optional<Committer<Collection<CompletableFuture<?>>>> createCommitter() throws IOException {
-        return Optional.of(new AsyncSinkCommitter());
+    public Optional<Committer<Semaphore>> createCommitter() throws IOException {
+        return Optional.of(new AsyncSinkCommitter(MAX_IN_FLIGHT_REQUESTS));
     }
 
     @Override
-    public Optional<GlobalCommitter<Collection<CompletableFuture<?>>, Void>> createGlobalCommitter() throws IOException {
+    public Optional<GlobalCommitter<Semaphore, Void>> createGlobalCommitter() throws IOException {
         return Optional.empty();
     }
 
     @Override
-    public Optional<SimpleVersionedSerializer<Collection<CompletableFuture<?>>>> getCommittableSerializer() {
+    public Optional<SimpleVersionedSerializer<Semaphore>> getCommittableSerializer() {
         // FIXME: return Optional.empty(); causes a runtime exception
 
-        return Optional.of(new SimpleVersionedSerializer<Collection<CompletableFuture<?>>>() {
+        return Optional.of(new SimpleVersionedSerializer<Semaphore>() {
             @Override
             public int getVersion() {
                 return 0;
             }
 
             @Override
-            public byte[] serialize(Collection<CompletableFuture<?>> completableFutures) throws IOException {
+            public byte[] serialize(Semaphore completableFutures) throws IOException {
                 return new byte[0];
             }
 
             @Override
-            public Collection<CompletableFuture<?>> deserialize(int i, byte[] bytes) throws IOException {
+            public Semaphore deserialize(int i, byte[] bytes) throws IOException {
                 return null;
             }
         });

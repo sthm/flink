@@ -5,29 +5,36 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Semaphore;
 
-public class AsyncSinkCommitter implements Committer<Collection<CompletableFuture<?>>> {
+public class AsyncSinkCommitter implements Committer<Semaphore> {
     static final Logger logger = LogManager.getLogger(AsyncSinkCommitter.class);
 
-    @Override
-    public List<Collection<CompletableFuture<?>>> commit(List<Collection<CompletableFuture<?>>> committables) throws IOException {
+    private final int maxInFlightRequests;
 
-        for (Collection<CompletableFuture<?>> committable : committables) {
+    public AsyncSinkCommitter(int maxInFlightRequests) {
+        this.maxInFlightRequests = maxInFlightRequests;
+    }
+
+    @Override
+    public List<Semaphore> commit(List<Semaphore> committables) throws IOException {
+
+        for (Semaphore committable : committables) {
             if (committable == null) {
                 continue;
             }
 
-            logger.info("Committing. Waiting for {} in-flight requests to complete.", committable.size());
+            logger.info("Committing. Waiting for {} in-flight requests to complete.", maxInFlightRequests - committable.availablePermits());
 
-            committable.forEach(CompletableFuture::join);
-
-            // this function receives a reference to the original bufferedRequestEntries, so when all futures completed, the list should be empty
-            // (modulo race conditions where a completed future is just about to be removed)
-            assert(committables.isEmpty());
+            try {
+                // wait until all outstanding in flight requests have been completed
+                committable.acquire(maxInFlightRequests);
+            } catch (InterruptedException e) {
+                // FIXME: add exception to signature instead of swallowing it; requires change to Flink API
+                Thread.currentThread().interrupt();
+            }
         }
 
         return Collections.emptyList();

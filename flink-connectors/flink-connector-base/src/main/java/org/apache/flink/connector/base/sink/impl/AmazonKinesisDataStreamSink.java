@@ -1,9 +1,10 @@
 package org.apache.flink.connector.base.sink.impl;
 
+import org.apache.flink.api.connector.sink.SinkWriter;
 import org.apache.flink.connector.base.sink.AsyncSinkBase;
 import org.apache.flink.connector.base.sink.writer.AsyncSinkWriter;
 import org.apache.flink.connector.base.sink.writer.ElementConverter;
-import org.apache.flink.api.connector.sink.SinkWriter;
+import org.apache.flink.streaming.api.functions.async.ResultFuture;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import software.amazon.awssdk.core.SdkBytes;
@@ -15,8 +16,10 @@ import software.amazon.awssdk.services.kinesis.model.PutRecordsResultEntry;
 
 import java.io.IOException;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Semaphore;
 
 public class AmazonKinesisDataStreamSink<InputT> extends AsyncSinkBase<InputT, PutRecordsRequestEntry> {
 
@@ -40,7 +43,7 @@ public class AmazonKinesisDataStreamSink<InputT> extends AsyncSinkBase<InputT, P
 
 
     @Override
-    public SinkWriter<InputT, Collection<CompletableFuture<?>>, Collection<PutRecordsRequestEntry>> createWriter(InitContext context, List<Collection<PutRecordsRequestEntry>> states) throws IOException {
+    public SinkWriter<InputT, Semaphore, Collection<PutRecordsRequestEntry>> createWriter(InitContext context, List<Collection<PutRecordsRequestEntry>> states) throws IOException {
         return new AmazonKinesisDataStreamWriter();
     }
 
@@ -67,7 +70,7 @@ public class AmazonKinesisDataStreamSink<InputT> extends AsyncSinkBase<InputT, P
         }
 
         @Override
-        protected CompletableFuture<?> submitRequestEntries(List<PutRecordsRequestEntry> requestEntries) {
+        protected void submitRequestEntries(List<PutRecordsRequestEntry> requestEntries, ResultFuture<?> requestResult) {
             // create a batch request
             PutRecordsRequest batchRequest = PutRecordsRequest
                     .builder()
@@ -81,10 +84,11 @@ public class AmazonKinesisDataStreamSink<InputT> extends AsyncSinkBase<InputT, P
 
 
             // re-queue elements of failed requests
-            CompletableFuture<PutRecordsResponse> handleResponse = future
-                .whenComplete((response, err) -> {
+            future.whenComplete((response, err) -> {
                     if (err != null) {
-                        logger.error(err);
+                        requestEntries.forEach(this::requeueFailedRequestEntry);
+
+                        requestResult.complete(Collections.emptyList());
 
                         return;
                     }
@@ -101,12 +105,8 @@ public class AmazonKinesisDataStreamSink<InputT> extends AsyncSinkBase<InputT, P
                         }
                     }
 
-                    //TODO: handle errors of the entire request...
+                    requestResult.complete(Collections.emptyList());
                 });
-
-
-            // return future to track completion of async request
-            return handleResponse;
         }
 
     }
