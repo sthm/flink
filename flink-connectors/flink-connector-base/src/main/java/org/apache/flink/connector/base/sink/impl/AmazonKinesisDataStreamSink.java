@@ -88,7 +88,7 @@ public class AmazonKinesisDataStreamSink<InputT> extends AsyncSinkBase<InputT, P
                     if (err != null) {
                         requestEntries.forEach(this::requeueFailedRequestEntry);
 
-                        requestResult.complete(Collections.emptyList());
+                        requestResult.completeExceptionally(err);
 
                         return;
                     }
@@ -108,6 +108,5 @@ public class AmazonKinesisDataStreamSink<InputT> extends AsyncSinkBase<InputT, P
                     requestResult.complete(Collections.emptyList());
                 });
         }
-
     }
 }
