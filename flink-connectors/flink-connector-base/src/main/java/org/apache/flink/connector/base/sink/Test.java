@@ -1,8 +1,13 @@
 package org.apache.flink.connector.base.sink;
 
+import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.connector.base.sink.impl.AmazonKinesisDataStreamSink;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.connectors.kinesis.FlinkKinesisConsumer;
+import org.apache.flink.streaming.connectors.kinesis.config.ConsumerConfigConstants;
+
+import java.util.Properties;
 
 public class Test {
 
@@ -10,12 +15,18 @@ public class Test {
         // set up the streaming execution environment
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-        env.enableCheckpointing(60_000);
+        env.enableCheckpointing(10_000);
 
-//        DataStream<String> stream = env.readTextFile("s3://shausma-demo/part-10000.json");
-        DataStream<String> stream = env.readTextFile("s3://shausma-nyc-tlc/yellow-trip-data/taxi-trips.json/dropoff_year=2010/part-00000-cdac5fe4-b823-4576-aeb7-7327b077476e.c000.json");
+//        DataStream<String> stream = env.readTextFile("s3://shausma-nyc-tlc/yellow-trip-data/taxi-trips.json/dropoff_year=2010/part-00000-cdac5fe4-b823-4576-aeb7-7327b077476e.c000.json");
 
-        stream.sinkTo(new AmazonKinesisDataStreamSink<>("test"));
+        Properties consumerConfig = new Properties();
+        consumerConfig.put(ConsumerConfigConstants.AWS_REGION, "eu-west-1");
+        consumerConfig.put(ConsumerConfigConstants.AWS_CREDENTIALS_PROVIDER, "AUTO");
+        consumerConfig.put(ConsumerConfigConstants.STREAM_INITIAL_POSITION, "TRIM_HORIZON");
+
+        DataStream<String> stream = env.addSource(new FlinkKinesisConsumer<>("test", new SimpleStringSchema(), consumerConfig));
+
+        stream.sinkTo(new AmazonKinesisDataStreamSink<>("test-out"));
 
         /*
          * Here, you can start creating your execution plan for Flink.
