@@ -225,11 +225,13 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
     public List<Semaphore> prepareCommit(boolean flush) throws IOException {
         logger.info("Prepare commit. {} requests currently in flight.", inFlightSlotsAvailable.availablePermits());
 
-        try {
-            flush();
-        } catch (InterruptedException e) {
-            // FIXME: add exception to signature instead of swallowing it; requires change to Flink API
-            Thread.currentThread().interrupt();
+        if (flush) {
+            try {
+                flush();
+            } catch (InterruptedException e) {
+                // FIXME: add exception to signature instead of swallowing it; requires change to Flink API
+                Thread.currentThread().interrupt();
+            }
         }
 
         // reuse current inFlightSlotsAvailable as commitable and create new semaphore to avoid copy and clearing
