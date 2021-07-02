@@ -18,8 +18,9 @@
 package org.apache.flink.connector.base.sink.committer;
 
 import org.apache.flink.api.connector.sink.Committer;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -27,7 +28,7 @@ import java.util.List;
 import java.util.concurrent.Semaphore;
 
 public class AsyncSinkCommitter implements Committer<Semaphore> {
-    static final Logger logger = LogManager.getLogger(AsyncSinkCommitter.class);
+    private static final Logger LOG = LoggerFactory.getLogger(AsyncSinkCommitter.class);
 
     private final int maxInFlightRequests;
 
@@ -43,7 +44,7 @@ public class AsyncSinkCommitter implements Committer<Semaphore> {
                 continue;
             }
 
-            logger.info("Committing. Waiting for {} in-flight requests to complete.", maxInFlightRequests - committable.availablePermits());
+            LOG.info("Committing. Waiting for {} in-flight requests to complete.", maxInFlightRequests - committable.availablePermits());
 
             try {
                 // wait until all outstanding in flight requests have been completed
