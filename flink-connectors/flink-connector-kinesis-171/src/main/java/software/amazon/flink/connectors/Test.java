@@ -15,10 +15,9 @@
  * limitations under the License.
  */
 
-package org.apache.flink.connector.base.sink;
+package software.amazon.flink.connectors;
 
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
-import org.apache.flink.connector.base.sink.impl.AmazonKinesisDataStreamSink;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.connectors.kinesis.FlinkKinesisConsumer;

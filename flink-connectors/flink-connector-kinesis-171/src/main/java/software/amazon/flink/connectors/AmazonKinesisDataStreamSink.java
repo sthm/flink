@@ -15,15 +15,16 @@
  * limitations under the License.
  */
 
-package org.apache.flink.connector.base.sink.impl;
+package software.amazon.flink.connectors;
 
 import org.apache.flink.api.connector.sink.SinkWriter;
 import org.apache.flink.connector.base.sink.AsyncSinkBase;
 import org.apache.flink.connector.base.sink.writer.AsyncSinkWriter;
 import org.apache.flink.connector.base.sink.writer.ElementConverter;
-import org.apache.flink.streaming.api.functions.async.ResultFuture;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.apache.flink.connector.base.sink.writer.ResultFuture;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.kinesis.KinesisAsyncClient;
 import software.amazon.awssdk.services.kinesis.model.PutRecordsRequest;
@@ -33,14 +34,13 @@ import software.amazon.awssdk.services.kinesis.model.PutRecordsResultEntry;
 
 import java.io.IOException;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Semaphore;
 
 public class AmazonKinesisDataStreamSink<InputT> extends AsyncSinkBase<InputT, PutRecordsRequestEntry> {
 
-    private static final Logger logger = LogManager.getLogger(AmazonKinesisDataStreamSink.class);
+    private static final Logger LOG = LoggerFactory.getLogger(AmazonKinesisDataStreamSink.class);
 
     private final String streamName;
     private final static KinesisAsyncClient client = KinesisAsyncClient.create();
@@ -87,7 +87,7 @@ public class AmazonKinesisDataStreamSink<InputT> extends AsyncSinkBase<InputT, P
         }
 
         @Override
-        protected void submitRequestEntries(List<PutRecordsRequestEntry> requestEntries, ResultFuture<?> requestResult) {
+        protected void submitRequestEntries(List<PutRecordsRequestEntry> requestEntries, ResultFuture requestResult) {
             // create a batch request
             PutRecordsRequest batchRequest = PutRecordsRequest
                     .builder()
@@ -111,7 +111,7 @@ public class AmazonKinesisDataStreamSink<InputT> extends AsyncSinkBase<InputT, P
                     }
 
                     if (response.failedRecordCount() > 0) {
-                        logger.warn("Re-queueing {} messages", response.failedRecordCount());
+                        LOG.warn("Re-queueing {} messages", response.failedRecordCount());
 
                         List<PutRecordsResultEntry> records = response.records();
 
@@ -122,7 +122,7 @@ public class AmazonKinesisDataStreamSink<InputT> extends AsyncSinkBase<InputT, P
                         }
                     }
 
-                    requestResult.complete(Collections.emptyList());
+                    requestResult.complete();
                 });
         }
     }

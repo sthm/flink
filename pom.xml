@@ -86,6 +86,7 @@ under the License.
 		<module>flink-kubernetes</module>
 		<module>flink-external-resources</module>
 		<module>tools/ci/java-ci-tools</module>
+		<module>flink-conector-kinesis-171</module>
 	</modules>
 
 	<properties>

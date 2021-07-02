@@ -18,13 +18,19 @@
 package org.apache.flink.connector.base.sink.writer;
 
 import org.apache.flink.api.connector.sink.SinkWriter;
-import org.apache.flink.streaming.api.functions.async.ResultFuture;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.Serializable;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.LinkedBlockingDeque;
@@ -33,7 +39,7 @@ import java.util.concurrent.Semaphore;
 
 public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable> implements SinkWriter<InputT, Semaphore, Collection<RequestEntryT>> {
 
-    static final Logger logger = LogManager.getLogger(AsyncSinkWriter.class);
+    private static final Logger LOG = LoggerFactory.getLogger(AsyncSinkWriter.class);
 
 
     /**
@@ -71,7 +77,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      *                       persisted in the destination or have been
      *                       re-queued through {@code requeueFailedRequestEntry}
      */
-    protected abstract void submitRequestEntries(List<RequestEntryT> requestEntries, ResultFuture<?> requestResult);
+    protected abstract void submitRequestEntries(List<RequestEntryT> requestEntries, ResultFuture requestResult);
 
 
     /**
@@ -208,9 +214,9 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
                 }
             }
 
-            ResultFuture<?> requestResult = new ResultFuture<Void>() {
+            ResultFuture requestResult = new ResultFuture() {
                 @Override
-                public void complete(Collection<Void> collection) {
+                public void complete() {
                     inFlightSlotsAvailable.release();
                 }
 
@@ -240,7 +246,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      */
     @Override
     public List<Semaphore> prepareCommit(boolean flush) throws IOException {
-        logger.info("Prepare commit. {} requests currently in flight.", inFlightSlotsAvailable.availablePermits());
+        LOG.info("Prepare commit. {} requests currently in flight.", inFlightSlotsAvailable.availablePermits());
 
         if (flush) {
             try {
