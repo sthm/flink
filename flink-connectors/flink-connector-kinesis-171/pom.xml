@@ -30,13 +30,14 @@ under the License.
 		<relativePath>..</relativePath>
 	</parent>
 
-	<name>Flink : Connectors : Kinesis</name>
-	<artifactId>flink-connector-kinesis-171</artifactId>
+	<artifactId>flink-connector-kinesis-171_${scala.binary.version}</artifactId>
+	<name>Flink : Connectors : Kinesis 171</name>
 
 	<properties>
-		<aws.sdkv2.version>2.16.86</aws.sdkv2.version>
+		<aws.sdkv2.version>2.16.95</aws.sdkv2.version>
 	</properties>
 
+	<packaging>jar</packaging>
 
 	<dependencies>
 		<dependency>
