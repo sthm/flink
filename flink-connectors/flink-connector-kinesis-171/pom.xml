@@ -31,7 +31,7 @@ under the License.
 	</parent>
 
 	<name>Flink : Connectors : Kinesis</name>
-	<artifactId>flink-conector-kinesis-171</artifactId>
+	<artifactId>flink-connector-kinesis-171</artifactId>
 
 	<properties>
 		<aws.sdkv2.version>2.16.86</aws.sdkv2.version>
