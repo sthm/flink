@@ -1,10 +1,7 @@
 package org.apache.flink.connector.base.sink.writer;
 
-
 public interface ResultFuture {
-    /**
-     * Completes the result future.
-     */
+    /** Completes the result future. */
     void complete();
 
     /**
