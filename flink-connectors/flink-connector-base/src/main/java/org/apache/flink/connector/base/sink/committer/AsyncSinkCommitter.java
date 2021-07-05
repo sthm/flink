@@ -44,13 +44,16 @@ public class AsyncSinkCommitter implements Committer<Semaphore> {
                 continue;
             }
 
-            LOG.info("Committing. Waiting for {} in-flight requests to complete.", maxInFlightRequests - committable.availablePermits());
+            LOG.info(
+                    "Committing. Waiting for {} in-flight requests to complete.",
+                    maxInFlightRequests - committable.availablePermits());
 
             try {
                 // wait until all outstanding in flight requests have been completed
                 committable.acquire(maxInFlightRequests);
             } catch (InterruptedException e) {
-                // FIXME: add exception to signature instead of swallowing it; requires change to Flink API
+                // FIXME: add exception to signature instead of swallowing it; requires change to
+                // Flink API
                 Thread.currentThread().interrupt();
             }
         }
@@ -59,7 +62,5 @@ public class AsyncSinkCommitter implements Committer<Semaphore> {
     }
 
     @Override
-    public void close() throws Exception {
-
-    }
+    public void close() throws Exception {}
 }

@@ -17,7 +17,6 @@
 
 package org.apache.flink.connector.base.sink;
 
-
 import org.apache.flink.api.connector.sink.Committer;
 import org.apache.flink.api.connector.sink.GlobalCommitter;
 import org.apache.flink.api.connector.sink.Sink;
@@ -31,24 +30,26 @@ import java.util.Optional;
 import java.util.concurrent.Semaphore;
 
 /**
- * A generic sink for destinations that provide an async client to persist
- * data.
- * <p>
- * The design of the sink focuses on extensibility and a broad support of
- * destinations. The core of the sink is kept generic and free of any connector
- * specific dependencies. The sink is designed to participate in checkpointing
- * to provide at-least once semantics, but it is limited to destinations that
- * provide a client that supports async requests.
- * <p>
- * Limitations:
+ * A generic sink for destinations that provide an async client to persist data.
+ *
+ * <p>The design of the sink focuses on extensibility and a broad support of destinations. The core
+ * of the sink is kept generic and free of any connector specific dependencies. The sink is designed
+ * to participate in checkpointing to provide at-least once semantics, but it is limited to
+ * destinations that provide a client that supports async requests.
+ *
+ * <p>Limitations:
+ *
  * <ul>
- *   <li>The sink is designed for destinations that provide an async client. Destinations that cannot ingest events in an async fashion cannot be supported by the sink.</li>
- *   <li>The sink usually persist InputTs in the order they are added to the sink, but reorderings may occur, eg, when RequestEntryTs need to be retried.</li>
- *   <li>We are not considering support for exactly-once semantics at this point.</li>
+ *   <li>The sink is designed for destinations that provide an async client. Destinations that
+ *       cannot ingest events in an async fashion cannot be supported by the sink.
+ *   <li>The sink usually persist InputTs in the order they are added to the sink, but reorderings
+ *       may occur, eg, when RequestEntryTs need to be retried.
+ *   <li>We are not considering support for exactly-once semantics at this point.
  * </ul>
  */
-public abstract class AsyncSinkBase<InputT, RequestEntryT extends Serializable> implements Sink<InputT, Semaphore, Collection<RequestEntryT>, Void> {
-    private static final int MAX_IN_FLIGHT_REQUESTS = 5;       // just for testing purposes
+public abstract class AsyncSinkBase<InputT, RequestEntryT extends Serializable>
+        implements Sink<InputT, Semaphore, Collection<RequestEntryT>, Void> {
+    private static final int MAX_IN_FLIGHT_REQUESTS = 5; // just for testing purposes
 
     @Override
     public Optional<Committer<Semaphore>> createCommitter() throws IOException {
@@ -64,22 +65,23 @@ public abstract class AsyncSinkBase<InputT, RequestEntryT extends Serializable> 
     public Optional<SimpleVersionedSerializer<Semaphore>> getCommittableSerializer() {
         // FIXME: return Optional.empty(); causes a runtime exception
 
-        return Optional.of(new SimpleVersionedSerializer<Semaphore>() {
-            @Override
-            public int getVersion() {
-                return 0;
-            }
+        return Optional.of(
+                new SimpleVersionedSerializer<Semaphore>() {
+                    @Override
+                    public int getVersion() {
+                        return 0;
+                    }
 
-            @Override
-            public byte[] serialize(Semaphore completableFutures) throws IOException {
-                return new byte[0];
-            }
+                    @Override
+                    public byte[] serialize(Semaphore completableFutures) throws IOException {
+                        return new byte[0];
+                    }
 
-            @Override
-            public Semaphore deserialize(int i, byte[] bytes) throws IOException {
-                return null;
-            }
-        });
+                    @Override
+                    public Semaphore deserialize(int i, byte[] bytes) throws IOException {
+                        return null;
+                    }
+                });
     }
 
     @Override
@@ -88,7 +90,8 @@ public abstract class AsyncSinkBase<InputT, RequestEntryT extends Serializable> 
     }
 
     @Override
-    public Optional<SimpleVersionedSerializer<Collection<RequestEntryT>>> getWriterStateSerializer() {
+    public Optional<SimpleVersionedSerializer<Collection<RequestEntryT>>>
+            getWriterStateSerializer() {
         return Optional.empty();
     }
 }
