@@ -64,7 +64,20 @@ public interface Sink<InputT, CommT, WriterStateT, GlobalCommT> extends Serializ
      * @return A committer.
      * @throws IOException if fail to create a committer.
      */
-    Optional<Committer<CommT>> createCommitter() throws IOException;
+    @Deprecated
+    default Optional<Committer<CommT>> createCommitter() throws IOException {
+        return Optional.empty();
+    }
+    /**
+     * Creates a {@link Committer}.
+     *
+     * @return A committer.
+     * @throws IOException if fail to create a committer.
+     */
+    default Optional<Committer<CommT>> createCommitter(CommitterInitContext context)
+            throws IOException {
+        return createCommitter();
+    }
 
     /**
      * Creates a {@link GlobalCommitter}.
@@ -72,7 +85,22 @@ public interface Sink<InputT, CommT, WriterStateT, GlobalCommT> extends Serializ
      * @return A global committer.
      * @throws IOException if fail to create a global committer.
      */
-    Optional<GlobalCommitter<CommT, GlobalCommT>> createGlobalCommitter() throws IOException;
+    @Deprecated
+    default Optional<GlobalCommitter<CommT, GlobalCommT>> createGlobalCommitter()
+            throws IOException {
+        return Optional.empty();
+    }
+
+    /**
+     * Creates a {@link GlobalCommitter}.
+     *
+     * @return A global committer.
+     * @throws IOException if fail to create a global committer.
+     */
+    default Optional<GlobalCommitter<CommT, GlobalCommT>> createGlobalCommitter(
+            CommitterInitContext context) throws IOException {
+        return createGlobalCommitter();
+    }
 
     /** Returns the serializer of the committable type. */
     Optional<SimpleVersionedSerializer<CommT>> getCommittableSerializer();
@@ -115,6 +143,26 @@ public interface Sink<InputT, CommT, WriterStateT, GlobalCommT> extends Serializ
 
         /** @return number of parallel Sink tasks. */
         int getNumberOfParallelSubtasks();
+
+        /** @return The metric group this writer belongs to. */
+        MetricGroup metricGroup();
+    }
+
+    /**
+     * The interface exposes some runtime info for creating a {@link Committer} or {@link
+     * GlobalCommitter}.
+     */
+    interface CommitterInitContext {
+        /**
+         * Returns the mailbox executor that allows to execute {@link Runnable}s inside the task
+         * thread in between record processing.
+         *
+         * <p>Note that this method should not be used per-record for performance reasons in the
+         * same way as individual records should not be sent individually. Rather, implementers are
+         * expected to batch records and only enqueue a single {@link Runnable} per batch to handle
+         * the result.
+         */
+        MailboxExecutor getMailboxExecutor();
 
         /** @return The metric group this writer belongs to. */
         MetricGroup metricGroup();

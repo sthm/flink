@@ -20,10 +20,13 @@ package org.apache.flink.streaming.runtime.translators;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.ExecutionConfig;
+import org.apache.flink.api.common.operators.MailboxExecutor;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.connector.sink.Sink;
 import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.api.java.typeutils.TypeExtractor;
+import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.metrics.groups.UnregisteredMetricsGroup;
 import org.apache.flink.streaming.api.graph.StreamGraph;
 import org.apache.flink.streaming.api.graph.TransformationTranslator;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
@@ -39,6 +42,7 @@ import org.apache.flink.streaming.runtime.operators.sink.StreamingCommitterOpera
 import org.apache.flink.streaming.runtime.operators.sink.StreamingGlobalCommitterOperatorFactory;
 import org.apache.flink.streaming.util.graph.StreamGraphUtils;
 import org.apache.flink.util.FlinkRuntimeException;
+import org.apache.flink.util.function.ThrowingRunnable;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -227,7 +231,36 @@ public class SinkTransformationTranslator<InputT, CommT, WriterStateT, GlobalCom
             Context context)
             throws IOException {
 
-        if (!sinkTransformation.getSink().createCommitter().isPresent()) {
+        if (!sinkTransformation
+                .getSink()
+                .createCommitter(
+                        new Sink.CommitterInitContext() {
+                            @Override
+                            public MailboxExecutor getMailboxExecutor() {
+                                return new MailboxExecutor() {
+                                    @Override
+                                    public void execute(
+                                            ThrowingRunnable<? extends Exception> command,
+                                            String descriptionFormat,
+                                            Object... descriptionArgs) {}
+
+                                    @Override
+                                    public void yield()
+                                            throws InterruptedException, FlinkRuntimeException {}
+
+                                    @Override
+                                    public boolean tryYield() throws FlinkRuntimeException {
+                                        return false;
+                                    }
+                                };
+                            }
+
+                            @Override
+                            public MetricGroup metricGroup() {
+                                return new UnregisteredMetricsGroup();
+                            }
+                        })
+                .isPresent()) {
             return -1;
         }
 

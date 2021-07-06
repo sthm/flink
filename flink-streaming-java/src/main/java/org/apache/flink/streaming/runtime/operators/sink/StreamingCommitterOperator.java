@@ -18,7 +18,9 @@
 
 package org.apache.flink.streaming.runtime.operators.sink;
 
+import org.apache.flink.api.common.operators.MailboxExecutor;
 import org.apache.flink.api.connector.sink.Committer;
+import org.apache.flink.api.connector.sink.Sink;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 
 import java.util.ArrayList;
@@ -39,13 +41,34 @@ final class StreamingCommitterOperator<CommT>
     private final List<CommT> recoveredCommittables;
 
     /** Responsible for committing the committable to the external system. * */
-    private final Committer<CommT> committer;
+    private Committer<CommT> committer;
+
+    private final Sink<?, CommT, ?, ?> sink;
+
+    private final MailboxExecutor mailboxExecutor;
 
     StreamingCommitterOperator(
-            Committer<CommT> committer, SimpleVersionedSerializer<CommT> committableSerializer) {
+            Sink<?, CommT, ?, ?> sink,
+            MailboxExecutor mailboxExecutor,
+            SimpleVersionedSerializer<CommT> committableSerializer) {
         super(committableSerializer);
-        this.committer = checkNotNull(committer);
+
+        this.sink = sink;
+        this.mailboxExecutor = mailboxExecutor;
         this.recoveredCommittables = new ArrayList<>();
+    }
+
+    @Override
+    public void open() throws Exception {
+        super.open();
+
+        this.committer =
+                sink.createCommitter(
+                                new CommitterInitContextImpl(mailboxExecutor, getMetricGroup()))
+                        .orElseThrow(
+                                () ->
+                                        new IllegalStateException(
+                                                "Could not create committer from the sink"));
     }
 
     @Override
