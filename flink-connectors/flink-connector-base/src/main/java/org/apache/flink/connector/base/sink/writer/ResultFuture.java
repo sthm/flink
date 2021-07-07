@@ -1,13 +1,12 @@
 package org.apache.flink.connector.base.sink.writer;
 
-public interface ResultFuture {
-    /** Completes the result future. */
-    void complete();
+import java.util.Collection;
 
+public interface ResultFuture<RequestEntryT> {
     /**
-     * Completes the result future exceptionally with an exception.
+     * Completes the result future.
      *
-     * @param error A Throwable object.
+     * @param failedRequestEntries Request entries that need to be retried at a later point
      */
-    void completeExceptionally(Throwable error);
+    void complete(Collection<RequestEntryT> failedRequestEntries);
 }

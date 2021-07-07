@@ -48,37 +48,38 @@ import java.util.concurrent.Semaphore;
  * </ul>
  */
 public abstract class AsyncSinkBase<InputT, RequestEntryT extends Serializable>
-        implements Sink<InputT, Semaphore, Collection<RequestEntryT>, Void> {
-    private static final int MAX_IN_FLIGHT_REQUESTS = 5; // just for testing purposes
+        implements Sink<InputT, Void, Collection<RequestEntryT>, Void> {
 
     @Override
-    public Optional<Committer<Semaphore>> createCommitter() throws IOException {
-        return Optional.of(new AsyncSinkCommitter(MAX_IN_FLIGHT_REQUESTS));
+    public Optional<Committer<Void>> createCommitter(CommitterInitContext context)
+            throws IOException {
+        return Optional.of(new AsyncSinkCommitter(context));
     }
 
     @Override
-    public Optional<GlobalCommitter<Semaphore, Void>> createGlobalCommitter() throws IOException {
+    public Optional<GlobalCommitter<Void, Void>> createGlobalCommitter(
+            CommitterInitContext context) throws IOException {
         return Optional.empty();
     }
 
     @Override
-    public Optional<SimpleVersionedSerializer<Semaphore>> getCommittableSerializer() {
+    public Optional<SimpleVersionedSerializer<Void>> getCommittableSerializer() {
         // FIXME: return Optional.empty(); causes a runtime exception
 
         return Optional.of(
-                new SimpleVersionedSerializer<Semaphore>() {
+                new SimpleVersionedSerializer<>() {
                     @Override
                     public int getVersion() {
                         return 0;
                     }
 
                     @Override
-                    public byte[] serialize(Semaphore completableFutures) throws IOException {
+                    public byte[] serialize(Void completableFutures) throws IOException {
                         return new byte[0];
                     }
 
                     @Override
-                    public Semaphore deserialize(int i, byte[] bytes) throws IOException {
+                    public Void deserialize(int i, byte[] bytes) throws IOException {
                         return null;
                     }
                 });

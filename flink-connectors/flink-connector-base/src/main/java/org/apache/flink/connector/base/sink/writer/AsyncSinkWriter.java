@@ -17,6 +17,8 @@
 
 package org.apache.flink.connector.base.sink.writer;
 
+import org.apache.flink.api.common.operators.MailboxExecutor;
+import org.apache.flink.api.connector.sink.Sink;
 import org.apache.flink.api.connector.sink.SinkWriter;
 
 import org.slf4j.Logger;
@@ -24,6 +26,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -31,15 +34,14 @@ import java.util.Collections;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Queue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.LinkedBlockingDeque;
-import java.util.concurrent.Semaphore;
 
 public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable>
-        implements SinkWriter<InputT, Semaphore, Collection<RequestEntryT>> {
+        implements SinkWriter<InputT, Void, Collection<RequestEntryT>> {
 
     private static final Logger LOG = LoggerFactory.getLogger(AsyncSinkWriter.class);
+
+    private final MailboxExecutor mailboxExecutor;
+    private int inFlightRequestsCount;
 
     /**
      * The ElementConverter provides a mapping between for the elements of a stream to request
@@ -69,7 +71,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      *     the destination or have been re-queued through {@code requeueFailedRequestEntry}
      */
     protected abstract void submitRequestEntries(
-            List<RequestEntryT> requestEntries, ResultFuture requestResult);
+            List<RequestEntryT> requestEntries, ResultFuture<RequestEntryT> requestResult);
 
     /**
      * Buffer to hold request entries that should be persisted into the destination.
@@ -83,8 +85,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * construct a new (retry) request entry from the response and add that back to the queue for
      * later retry.
      */
-    private final BlockingQueue<RequestEntryT> bufferedRequestEntries =
-            new LinkedBlockingDeque<>(MAX_BUFFERED_REQUESTS_ENTRIES);
+    private final Queue<RequestEntryT> bufferedRequestEntries = new ArrayDeque<>();
 
     /**
      * Buffer to hold request entries that need to be retired, eg, because of throttling applied at
@@ -104,7 +105,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * against the destination. So the size of the queue is effectively bound by {@code
      * MAX_BUFFERED_REQUESTS_ENTRIES} * {@code MAX_IN_FLIGHT_REQUESTS}.
      */
-    private final Queue<RequestEntryT> failedRequestEntries = new ConcurrentLinkedQueue<>();
+    private final Queue<RequestEntryT> failedRequestEntries = new ArrayDeque<>();
 
     /**
      * Tracks all pending async calls that have been executed since the last checkpoint. Calls that
@@ -120,21 +121,17 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * <p>To complete a checkpoint, we need to make sure that no requests are in flight, as they may
      * fail, which could then lead to data loss.
      */
-    private Semaphore inFlightSlotsAvailable = new Semaphore(MAX_IN_FLIGHT_REQUESTS, true);
-
     @Override
-    public void write(InputT element, Context context) throws IOException {
-        try {
-            // blocks if too many elements have been buffered
-            bufferedRequestEntries.put(elementConverter.apply(element, context));
-
-            // blocks if too many async requests are in flight
-            flush();
-        } catch (InterruptedException e) {
-            // FIXME: add exception to signature instead of swallowing it; requires change to Flink
-            // API
-            Thread.currentThread().interrupt();
+    public void write(InputT element, Context context) throws IOException, InterruptedException {
+        // blocks if too many elements have been buffered
+        while (bufferedRequestEntries.size() > MAX_BUFFERED_REQUESTS_ENTRIES) {
+            mailboxExecutor.yield();
         }
+
+        bufferedRequestEntries.add(elementConverter.apply(element, context));
+
+        // blocks if too many async requests are in flight
+        flush();
     }
 
     /**
@@ -148,7 +145,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * {@code submitRequestEntries}. Otherwise these request entries will be retried indefinitely,
      * always causing the same error.
      */
-    protected void requeueFailedRequestEntry(RequestEntryT requestEntry) {
+    protected void oLDrequeueFailedRequestEntry(RequestEntryT requestEntry) {
         failedRequestEntries.add(requestEntry);
     }
 
@@ -156,8 +153,10 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
     private static final int MAX_IN_FLIGHT_REQUESTS = 5; // just for testing purposes
     private static final int MAX_BUFFERED_REQUESTS_ENTRIES = 1000; // just for testing purposes
 
-    public AsyncSinkWriter(ElementConverter<InputT, RequestEntryT> elementConverter) {
+    public AsyncSinkWriter(
+            ElementConverter<InputT, RequestEntryT> elementConverter, Sink.InitContext context) {
         this.elementConverter = elementConverter;
+        this.mailboxExecutor = context.getMailboxExecutor();
     }
 
     /**
@@ -193,25 +192,29 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
                 }
             }
 
-            ResultFuture requestResult =
-                    new ResultFuture() {
+            ResultFuture<RequestEntryT> requestResult =
+                    new ResultFuture<>() {
                         @Override
-                        public void complete() {
-                            inFlightSlotsAvailable.release();
-                        }
-
-                        @Override
-                        public void completeExceptionally(Throwable throwable) {
-                            inFlightSlotsAvailable.release();
+                        public void complete(Collection<RequestEntryT> failedRequestEntries) {
+                            mailboxExecutor.execute(
+                                    () -> completeRequest(failedRequestEntries),
+                                    "Complete request and requeue %d failed request entries",
+                                    failedRequestEntries.size());
                         }
                     };
 
-            // acquire a slot for an request; block if current number of in-flight requests exceeds
-            // MAX_IN_FLIGHT_REQUESTS
-            inFlightSlotsAvailable.acquire();
+            while (inFlightRequestsCount > MAX_IN_FLIGHT_REQUESTS) {
+                mailboxExecutor.yield();
+            }
 
+            inFlightRequestsCount++;
             submitRequestEntries(batch, requestResult);
         }
+    }
+
+    private void completeRequest(Collection<RequestEntryT> failedRequestEntries) {
+        inFlightRequestsCount--;
+        failedRequestEntries.addAll(failedRequestEntries);
     }
 
     /**
@@ -224,32 +227,12 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * order to be completed as part of the pre commit.
      */
     @Override
-    public List<Semaphore> prepareCommit(boolean flush) throws IOException {
-        LOG.info(
-                "Prepare commit. {} requests currently in flight.",
-                inFlightSlotsAvailable.availablePermits());
-
+    public List<Void> prepareCommit(boolean flush) throws IOException, InterruptedException {
         if (flush) {
-            try {
-                flush();
-            } catch (InterruptedException e) {
-                // FIXME: add exception to signature instead of swallowing it; requires change to
-                // Flink API
-                Thread.currentThread().interrupt();
-            }
+            flush();
         }
 
-        // reuse current inFlightSlotsAvailable as commitable and create new semaphore to avoid copy
-        // and clearing
-        List<Semaphore> committable = Collections.singletonList(inFlightSlotsAvailable);
-
-        // all in-flight requests are handled by the AsyncSinkCommiter
-        // new elements that are added to the internal buffer during are not relevant for this
-        // commit
-        // so it's save to create a new semaphore that tracks these new elements
-        inFlightSlotsAvailable = new Semaphore(MAX_IN_FLIGHT_REQUESTS, true);
-
-        return committable;
+        return Collections.EMPTY_LIST;
     }
 
     /**

@@ -17,7 +17,9 @@
 
 package org.apache.flink.connector.base.sink.committer;
 
+import org.apache.flink.api.common.operators.MailboxExecutor;
 import org.apache.flink.api.connector.sink.Committer;
+import org.apache.flink.api.connector.sink.Sink;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,38 +27,27 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.Semaphore;
 
-public class AsyncSinkCommitter implements Committer<Semaphore> {
+import static org.apache.flink.util.Preconditions.checkArgument;
+
+public class AsyncSinkCommitter implements Committer<Void> {
     private static final Logger LOG = LoggerFactory.getLogger(AsyncSinkCommitter.class);
 
-    private final int maxInFlightRequests;
+    private final MailboxExecutor mailboxExecutor;
 
-    public AsyncSinkCommitter(int maxInFlightRequests) {
-        this.maxInFlightRequests = maxInFlightRequests;
+    public AsyncSinkCommitter(Sink.CommitterInitContext context) {
+        this.mailboxExecutor = context.getMailboxExecutor();
     }
 
     @Override
-    public List<Semaphore> commit(List<Semaphore> committables) throws IOException {
+    public List<Void> commit(List<Void> committables)
+            throws IOException, InterruptedException {
 
-        for (Semaphore committable : committables) {
-            if (committable == null) {
-                continue;
-            }
+        checkArgument(committables.size() == 0);
 
-            LOG.info(
-                    "Committing. Waiting for {} in-flight requests to complete.",
-                    maxInFlightRequests - committable.availablePermits());
+        //TODO: wait for all outstanding requests to complete
 
-            try {
-                // wait until all outstanding in flight requests have been completed
-                committable.acquire(maxInFlightRequests);
-            } catch (InterruptedException e) {
-                // FIXME: add exception to signature instead of swallowing it; requires change to
-                // Flink API
-                Thread.currentThread().interrupt();
-            }
-        }
+        //magic happens here
 
         return Collections.emptyList();
     }

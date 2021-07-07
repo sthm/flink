@@ -17,6 +17,7 @@
 
 package software.amazon.flink.connectors;
 
+import org.apache.flink.api.connector.sink.Sink;
 import org.apache.flink.api.connector.sink.SinkWriter;
 import org.apache.flink.connector.base.sink.AsyncSinkBase;
 import org.apache.flink.connector.base.sink.writer.AsyncSinkWriter;
@@ -33,6 +34,7 @@ import software.amazon.awssdk.services.kinesis.model.PutRecordsResponse;
 import software.amazon.awssdk.services.kinesis.model.PutRecordsResultEntry;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -43,7 +45,7 @@ public class AmazonKinesisDataStreamSink<InputT> extends AsyncSinkBase<InputT, P
     private static final Logger LOG = LoggerFactory.getLogger(AmazonKinesisDataStreamSink.class);
 
     private final String streamName;
-    private final static KinesisAsyncClient client = KinesisAsyncClient.create();
+    private static final KinesisAsyncClient client = KinesisAsyncClient.create();
     private final ElementConverter<InputT, PutRecordsRequestEntry> elementConverter;
 
     /**
@@ -58,12 +60,10 @@ public class AmazonKinesisDataStreamSink<InputT> extends AsyncSinkBase<InputT, P
                 .partitionKey(String.valueOf(element.hashCode()))
                 .build();
 
-
     @Override
-    public SinkWriter<InputT, Semaphore, Collection<PutRecordsRequestEntry>> createWriter(InitContext context, List<Collection<PutRecordsRequestEntry>> states) throws IOException {
-        return new AmazonKinesisDataStreamWriter();
+    public SinkWriter<InputT, Void, Collection<PutRecordsRequestEntry>> createWriter(InitContext context, List<Collection<PutRecordsRequestEntry>> states) throws IOException {
+        return new AmazonKinesisDataStreamWriter(context);
     }
-
 
     public AmazonKinesisDataStreamSink(String streamName, ElementConverter<InputT, PutRecordsRequestEntry> elementConverter, KinesisAsyncClient client) {
         this.streamName = streamName;
@@ -79,15 +79,14 @@ public class AmazonKinesisDataStreamSink<InputT> extends AsyncSinkBase<InputT, P
 //        this.client = KinesisAsyncClient.create();
     }
 
-
     private class AmazonKinesisDataStreamWriter extends AsyncSinkWriter<InputT, PutRecordsRequestEntry> {
 
-        public AmazonKinesisDataStreamWriter() {
-            super(elementConverter);
+        public AmazonKinesisDataStreamWriter(Sink.InitContext context) {
+            super(elementConverter, context);
         }
 
         @Override
-        protected void submitRequestEntries(List<PutRecordsRequestEntry> requestEntries, ResultFuture requestResult) {
+        protected void submitRequestEntries(List<PutRecordsRequestEntry> requestEntries, ResultFuture<PutRecordsRequestEntry> requestResult) {
             // create a batch request
             PutRecordsRequest batchRequest = PutRecordsRequest
                     .builder()
@@ -95,17 +94,13 @@ public class AmazonKinesisDataStreamSink<InputT> extends AsyncSinkBase<InputT, P
                     .streamName(streamName)
                     .build();
 
-
             // call api with batch request
             CompletableFuture<PutRecordsResponse> future = client.putRecords(batchRequest);
-
 
             // re-queue elements of failed requests
             future.whenComplete((response, err) -> {
                     if (err != null) {
-                        requestEntries.forEach(this::requeueFailedRequestEntry);
-
-                        requestResult.completeExceptionally(err);
+                        requestResult.complete(requestEntries);
 
                         return;
                     }
@@ -113,16 +108,17 @@ public class AmazonKinesisDataStreamSink<InputT> extends AsyncSinkBase<InputT, P
                     if (response.failedRecordCount() > 0) {
                         LOG.warn("Re-queueing {} messages", response.failedRecordCount());
 
+                        ArrayList<PutRecordsRequestEntry> failedRequestEntries = new ArrayList<>(response.failedRecordCount());
                         List<PutRecordsResultEntry> records = response.records();
 
                         for (int i = 0; i < records.size(); i++) {
                             if (records.get(i).errorCode() != null) {
-                                requeueFailedRequestEntry(requestEntries.get(i));
+                                failedRequestEntries.add(requestEntries.get(i));
                             }
                         }
-                    }
 
-                    requestResult.complete();
+                        requestResult.complete(failedRequestEntries);
+                    }
                 });
         }
     }
