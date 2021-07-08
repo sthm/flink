@@ -218,10 +218,12 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
             flush();
         }
 
+        /*
         // wait until all in-flight requests completed
         while (inFlightRequestsCount > 0) {
             mailboxExecutor.yield();
         }
+        */
 
         return Collections.emptyList();
     }

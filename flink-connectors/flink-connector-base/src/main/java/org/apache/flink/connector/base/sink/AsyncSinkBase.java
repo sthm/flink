@@ -62,25 +62,7 @@ public abstract class AsyncSinkBase<InputT, RequestEntryT extends Serializable>
 
     @Override
     public Optional<SimpleVersionedSerializer<Void>> getCommittableSerializer() {
-        // FIXME: return Optional.empty(); causes a runtime exception
-
-        return Optional.of(
-                new SimpleVersionedSerializer<>() {
-                    @Override
-                    public int getVersion() {
-                        return 0;
-                    }
-
-                    @Override
-                    public byte[] serialize(Void completableFutures) throws IOException {
-                        return new byte[0];
-                    }
-
-                    @Override
-                    public Void deserialize(int i, byte[] bytes) throws IOException {
-                        return null;
-                    }
-                });
+        return Optional.empty();
     }
 
     @Override
@@ -91,6 +73,7 @@ public abstract class AsyncSinkBase<InputT, RequestEntryT extends Serializable>
     @Override
     public Optional<SimpleVersionedSerializer<Collection<RequestEntryT>>>
             getWriterStateSerializer() {
+        //FIXME: implement
         return Optional.empty();
     }
 }
