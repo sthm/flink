@@ -40,8 +40,20 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
 
     private static final Logger LOG = LoggerFactory.getLogger(AsyncSinkWriter.class);
 
-    private final MailboxExecutor mailboxExecutor;
     private int inFlightRequestsCount;
+    private final MailboxExecutor mailboxExecutor;
+    private final Sink.ProcessingTimeService timeService;
+
+    private static final int MAX_BATCH_SIZE = 50; // just for testing purposes
+    private static final int MAX_IN_FLIGHT_REQUESTS = 5; // just for testing purposes
+    private static final int MAX_BUFFERED_REQUESTS_ENTRIES = 1000; // just for testing purposes
+
+    public AsyncSinkWriter(
+            ElementConverter<InputT, RequestEntryT> elementConverter, Sink.InitContext context) {
+        this.elementConverter = elementConverter;
+        this.mailboxExecutor = context.getMailboxExecutor();
+        this.timeService = context.getProcessingTimeService();
+    }
 
     /**
      * The ElementConverter provides a mapping between for the elements of a stream to request
@@ -114,9 +126,8 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * logic in {@code submitRequestsToApi}.
      *
      * <p>There is a limit on the number of concurrent (async) requests that can be handled by the
-     * client library. This limit is enforced by acquiring a semaphore before making a request. We
-     * are using a fair semaphore to keep the amount of reorderings induced by the sink to a
-     * minimum.
+     * client library. This limit is enforced by checking the queue size before accepting a new
+     * element into the queue.
      *
      * <p>To complete a checkpoint, we need to make sure that no requests are in flight, as they may
      * fail, which could then lead to data loss.
@@ -132,31 +143,6 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
 
         // blocks if too many async requests are in flight
         flush();
-    }
-
-    /**
-     * The entire request may fail or single request entries that are part of the request may not be
-     * persisted successfully, eg, because of network issues or service side throttling. All request
-     * entries that failed with transient failures need to be re-queued with this method so that
-     * aren't lost and can be retried later.
-     *
-     * <p>Request entries that are causing the same error in a reproducible manner, eg, ill-formed
-     * request entries, must not be re-queued but the error needs to be handled in the logic of
-     * {@code submitRequestEntries}. Otherwise these request entries will be retried indefinitely,
-     * always causing the same error.
-     */
-    protected void oLDrequeueFailedRequestEntry(RequestEntryT requestEntry) {
-        failedRequestEntries.add(requestEntry);
-    }
-
-    private static final int MAX_BATCH_SIZE = 50; // just for testing purposes
-    private static final int MAX_IN_FLIGHT_REQUESTS = 5; // just for testing purposes
-    private static final int MAX_BUFFERED_REQUESTS_ENTRIES = 1000; // just for testing purposes
-
-    public AsyncSinkWriter(
-            ElementConverter<InputT, RequestEntryT> elementConverter, Sink.InitContext context) {
-        this.elementConverter = elementConverter;
-        this.mailboxExecutor = context.getMailboxExecutor();
     }
 
     /**
@@ -214,7 +200,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
 
     private void completeRequest(Collection<RequestEntryT> failedRequestEntries) {
         inFlightRequestsCount--;
-        failedRequestEntries.addAll(failedRequestEntries);
+        this.failedRequestEntries.addAll(failedRequestEntries);
     }
 
     /**
@@ -232,7 +218,12 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
             flush();
         }
 
-        return Collections.EMPTY_LIST;
+        // wait until all in-flight requests completed
+        while (inFlightRequestsCount > 0) {
+            mailboxExecutor.yield();
+        }
+
+        return Collections.emptyList();
     }
 
     /**

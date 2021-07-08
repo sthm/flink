@@ -20,14 +20,12 @@ package org.apache.flink.connector.base.sink;
 import org.apache.flink.api.connector.sink.Committer;
 import org.apache.flink.api.connector.sink.GlobalCommitter;
 import org.apache.flink.api.connector.sink.Sink;
-import org.apache.flink.connector.base.sink.committer.AsyncSinkCommitter;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.Optional;
-import java.util.concurrent.Semaphore;
 
 /**
  * A generic sink for destinations that provide an async client to persist data.
@@ -53,12 +51,12 @@ public abstract class AsyncSinkBase<InputT, RequestEntryT extends Serializable>
     @Override
     public Optional<Committer<Void>> createCommitter(CommitterInitContext context)
             throws IOException {
-        return Optional.of(new AsyncSinkCommitter(context));
+        return Optional.empty();
     }
 
     @Override
-    public Optional<GlobalCommitter<Void, Void>> createGlobalCommitter(
-            CommitterInitContext context) throws IOException {
+    public Optional<GlobalCommitter<Void, Void>> createGlobalCommitter(CommitterInitContext context)
+            throws IOException {
         return Optional.empty();
     }
 
