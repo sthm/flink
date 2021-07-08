@@ -40,7 +40,7 @@ public class Test {
         consumerConfig.put(ConsumerConfigConstants.AWS_CREDENTIALS_PROVIDER, "AUTO");
         consumerConfig.put(ConsumerConfigConstants.STREAM_INITIAL_POSITION, "TRIM_HORIZON");
 
-        DataStream<String> stream = env.addSource(new FlinkKinesisConsumer<>("test-in", new SimpleStringSchema(), consumerConfig));
+        DataStream<String> stream = env.addSource(new FlinkKinesisConsumer<>("test", new SimpleStringSchema(), consumerConfig));
 
         stream.sinkTo(new AmazonKinesisDataStreamSink<>("test-out"));
 

@@ -36,9 +36,9 @@ import software.amazon.awssdk.services.kinesis.model.PutRecordsResultEntry;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Semaphore;
 
 public class AmazonKinesisDataStreamSink<InputT> extends AsyncSinkBase<InputT, PutRecordsRequestEntry> {
 
@@ -94,19 +94,23 @@ public class AmazonKinesisDataStreamSink<InputT> extends AsyncSinkBase<InputT, P
                     .streamName(streamName)
                     .build();
 
+            LOG.info("submitRequestEntries: putRecords");
+
             // call api with batch request
             CompletableFuture<PutRecordsResponse> future = client.putRecords(batchRequest);
 
             // re-queue elements of failed requests
             future.whenComplete((response, err) -> {
                     if (err != null) {
+                        LOG.warn("kinesis:PutRecords request failed: ", err);
+
                         requestResult.complete(requestEntries);
 
                         return;
                     }
 
                     if (response.failedRecordCount() > 0) {
-                        LOG.warn("Re-queueing {} messages", response.failedRecordCount());
+                        LOG.info("Re-queueing {} messages", response.failedRecordCount());
 
                         ArrayList<PutRecordsRequestEntry> failedRequestEntries = new ArrayList<>(response.failedRecordCount());
                         List<PutRecordsResultEntry> records = response.records();
@@ -118,6 +122,8 @@ public class AmazonKinesisDataStreamSink<InputT> extends AsyncSinkBase<InputT, P
                         }
 
                         requestResult.complete(failedRequestEntries);
+                    } else {
+                        requestResult.complete(Collections.emptyList());
                     }
                 });
         }
