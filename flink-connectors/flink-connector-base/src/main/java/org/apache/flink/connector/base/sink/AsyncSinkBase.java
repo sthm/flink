@@ -73,7 +73,7 @@ public abstract class AsyncSinkBase<InputT, RequestEntryT extends Serializable>
     @Override
     public Optional<SimpleVersionedSerializer<Collection<RequestEntryT>>>
             getWriterStateSerializer() {
-        //FIXME: implement
+        // FIXME: implement
         return Optional.empty();
     }
 }

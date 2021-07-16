@@ -31,9 +31,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.List;
 import java.util.NoSuchElementException;
-import java.util.Queue;
 
 public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable>
         implements SinkWriter<InputT, Void, Collection<RequestEntryT>> {
@@ -44,7 +44,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
     private final MailboxExecutor mailboxExecutor;
     private final Sink.ProcessingTimeService timeService;
 
-    private static final int MAX_BATCH_SIZE = 50; // just for testing purposes
+    private static final int MAX_BATCH_SIZE = 150; // just for testing purposes
     private static final int MAX_IN_FLIGHT_REQUESTS = 1; // just for testing purposes
     private static final int MAX_BUFFERED_REQUESTS_ENTRIES = 1000; // just for testing purposes
 
@@ -97,27 +97,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * construct a new (retry) request entry from the response and add that back to the queue for
      * later retry.
      */
-    private final Queue<RequestEntryT> bufferedRequestEntries = new ArrayDeque<>();
-
-    /**
-     * Buffer to hold request entries that need to be retired, eg, because of throttling applied at
-     * the destination.
-     *
-     * <p>As retries should be rare, this is a non-blocking queue (in contrast to {@code
-     * bufferedRequestEntries}). In this way, requests that need to be retried can quickly be added
-     * back to the internal buffer without blocking further processing. Moreover, in this way the
-     * implementation of {@code requeueFailedRequestEntry} does not have to deal with {@code
-     * InterruptedException}.
-     *
-     * <p>Having a separate queue for retires allows to preserve the order of retries based on the
-     * time the corresponding request failed.
-     *
-     * <p>Only failed request entries are added to the queue and requests entries in this queue are
-     * chosen over request entries from {@code bufferedRequestEntries} when the next request is made
-     * against the destination. So the size of the queue is effectively bound by {@code
-     * MAX_BUFFERED_REQUESTS_ENTRIES} * {@code MAX_IN_FLIGHT_REQUESTS}.
-     */
-    private final Queue<RequestEntryT> failedRequestEntries = new ArrayDeque<>();
+    private final Deque<RequestEntryT> bufferedRequestEntries = new ArrayDeque<>();
 
     /**
      * Tracks all pending async calls that have been executed since the last checkpoint. Calls that
@@ -152,22 +132,10 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * <p>The method blocks if too many async requests are in flight.
      */
     private void flush() throws InterruptedException {
-        while (bufferedRequestEntries.size() + failedRequestEntries.size() >= MAX_BATCH_SIZE) {
+        while (bufferedRequestEntries.size() >= MAX_BATCH_SIZE) {
 
             // create a batch of request entries that should be persisted in the destination
             ArrayList<RequestEntryT> batch = new ArrayList<>(MAX_BATCH_SIZE);
-
-            // prioritise retry events queued in failedRequestEntries to minimize latency for
-            // retries
-            while (batch.size() <= MAX_BATCH_SIZE && !failedRequestEntries.isEmpty()) {
-                try {
-                    batch.add(failedRequestEntries.remove());
-                } catch (NoSuchElementException e) {
-                    // if there are not enough failedRequestEntries elements, add elements from
-                    // bufferedRequestEntries
-                    break;
-                }
-            }
 
             while (batch.size() <= MAX_BATCH_SIZE && !bufferedRequestEntries.isEmpty()) {
                 try {
@@ -179,15 +147,10 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
             }
 
             ResultFuture<RequestEntryT> requestResult =
-                    new ResultFuture<>() {
-                        @Override
-                        public void complete(Collection<RequestEntryT> failedRequestEntries) {
-                            mailboxExecutor.execute(
-                                    () -> completeRequest(failedRequestEntries),
-                                    "Complete request and requeue %d failed request entries",
-                                    failedRequestEntries.size());
-                        }
-                    };
+                    failedRequestEntries -> mailboxExecutor.execute(
+                            () -> completeRequest(failedRequestEntries),
+                            "Mark in-flight request as completed and requeue %d request entries",
+                            failedRequestEntries.size());
 
             while (inFlightRequestsCount >= MAX_IN_FLIGHT_REQUESTS) {
                 mailboxExecutor.yield();
@@ -198,9 +161,20 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
         }
     }
 
+    /**
+     * Marks an in-flight request as completed and prepends failed requestEntries back to the
+     * internal requestEntry buffer for later retry.
+     *
+     * @param failedRequestEntries requestEntries that need to be retried
+     */
     private void completeRequest(Collection<RequestEntryT> failedRequestEntries) {
         inFlightRequestsCount--;
-        this.failedRequestEntries.addAll(failedRequestEntries);
+
+        // By just iterating through failedRequestEntries, it reverses the order of the
+        // failedRequestEntries. It doesn't make a difference for kinesis:putRecords, as the api
+        // does not make any order guarantees, but may cause avoidable reorderings for other
+        // destinations.
+        failedRequestEntries.forEach(bufferedRequestEntries::addFirst);
     }
 
     /**
@@ -209,8 +183,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * the (failed) in-flight requests are gone and cannot be retried. Hence, there cannot be any
      * outstanding in-flight requests when a commit is initialized.
      *
-     * <p>To this end, all in-flight requests need to be passed to the {@code AsyncSinkCommiter} in
-     * order to be completed as part of the pre commit.
+     * <p>To this end, all in-flight requests need to completed before proceeding with the commit.
      */
     @Override
     public List<Void> prepareCommit(boolean flush) throws IOException, InterruptedException {
@@ -234,7 +207,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      */
     @Override
     public List<Collection<RequestEntryT>> snapshotState() throws IOException {
-        return Arrays.asList(failedRequestEntries, bufferedRequestEntries);
+        return Arrays.asList(bufferedRequestEntries);
     }
 
     @Override
